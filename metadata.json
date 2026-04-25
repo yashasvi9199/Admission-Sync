@@ -1,0 +1,6 @@
+{
+  "name": "Office Attendance",
+  "description": "One-click office attendance app with location capturing, built with React and Capacitor for Android.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}

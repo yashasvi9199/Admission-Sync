@@ -1,0 +1,8 @@
+{
+	"appId": "com.office.attendance",
+	"appName": "Office Attendance",
+	"webDir": "dist",
+	"plugins": {
+		"Geolocation": {}
+	}
+}

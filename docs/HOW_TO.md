@@ -4,11 +4,12 @@ This document provides recipes for standard development, operations, and deploym
 
 ## Development Tasks
 
-### Running the App Locally
-Start the local server at port 3000:
+### Running the App Locally (Wrangler Proxy + Vite HMR)
+Start the integrated local dev proxy:
 ```bash
 npm run dev
 ```
+Wrangler will launch on port 3000 and proxy Vite HMR server on port 3001. Open [http://localhost:3000](http://localhost:3000).
 
 ### Type Checking & Linting
 Run compilation checks before committing code:
@@ -30,6 +31,15 @@ Create a database and load schema:
 ```bash
 turso db create aeropunchin-db
 turso db shell aeropunchin-db < docs/DATABASE.sql
+```
+
+## Cloudflare Pages Deployment
+
+### Deploying Serverless Functions
+To build the static frontend bundle and deploy to Cloudflare Pages (with serverless functions in `functions/` automatically compiled):
+```bash
+npm run build
+npx wrangler pages deploy dist --project-name=aeropunchin
 ```
 
 ## Mobile Configurations

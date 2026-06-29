@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { AeroPunchinState } from '../useStore';
-import { TursoOfflineAction } from '../../types';
+import { TursoOfflineAction } from '@/src/types';
 import { queryTurso } from '../../utils/turso';
 
 export interface OfflineSlice {

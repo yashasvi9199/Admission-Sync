@@ -1,26 +1,31 @@
-// Lightweight HTTP client for Turso / libSQL
+// Secure client for Turso / libSQL proxying via Cloudflare Pages functions
 export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
   const dbUrl = (import.meta as any).env?.VITE_TURSO_DATABASE_URL || '';
   const token = (import.meta as any).env?.VITE_TURSO_AUTH_TOKEN || '';
 
-  if (!dbUrl || !token || dbUrl === 'your_turso_db_url_here') {
-    return null;
+  let requestUrl = '/api/turso';
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+
+  // Determine if running inside native Capacitor environment (not served from cloudflare pages)
+  const isNativeCapacitor = typeof window !== 'undefined' && 
+    (window.location.protocol.startsWith('capacitor') || 
+     window.location.protocol.startsWith('http') && 
+     window.location.hostname !== 'localhost' && 
+     window.location.hostname !== '127.0.0.1' && 
+     !window.location.hostname.endsWith('pages.dev'));
+
+  if (isNativeCapacitor && dbUrl && token && dbUrl !== 'your_turso_db_url_here') {
+    const httpUrl = dbUrl.replace(/^libsql:\/\//, 'https://');
+    requestUrl = `${httpUrl}/v2/pipeline`;
+    headers['Authorization'] = `Bearer ${token}`;
   }
-
-  // Convert libsql:// to https://
-  const httpUrl = dbUrl.replace(/^libsql:\/\//, 'https://');
-
-  // CORS bypass proxy for local development server
-  const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  const requestUrl = isLocalDev ? '/api/turso/v2/pipeline' : `${httpUrl}/v2/pipeline`;
 
   try {
     const response = await fetch(requestUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers,
       body: JSON.stringify({
         requests: [
           {
@@ -54,7 +59,7 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Turso HTTP Error (${response.status}): ${errText}`);
+      throw new Error(`Proxy HTTP Error (${response.status}): ${errText}`);
     }
 
     const data = await response.json();
@@ -69,7 +74,6 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
       return responseStmt.rows.map((row: any) => {
         const obj: any = {};
         row.forEach((val: any, idx: number) => {
-          // Check for typed object response values
           let finalVal = val;
           if (val && typeof val === 'object' && 'value' in val) {
             finalVal = val.value;
@@ -81,7 +85,7 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
     }
     return null;
   } catch (error) {
-    console.error('Turso DB Query Failed:', error);
+    console.error('Database query failed:', error);
     throw error;
   }
 }

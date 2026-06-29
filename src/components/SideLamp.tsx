@@ -61,8 +61,8 @@ export default function SideLamp({ lampOn, onToggle, disabled = false }: SideLam
         className={`absolute inset-0 w-full h-full cursor-pointer z-20 rounded-2xl border-0 focus:outline-none bg-transparent ${
           disabled ? 'cursor-not-allowed' : ''
         }`}
-        title={lampOn ? 'Pull thread to Turn Off / Punch Out' : 'Pull thread to Turn On / Punch In'}
-        aria-label="Pull cord to toggle shift attendance"
+        title={lampOn ? 'Click thread to Turn Off / Punch Out' : 'Click thread to Turn On / Punch In'}
+        aria-label="Click cord to toggle shift attendance"
       />
 
       {/* SVG Drawing the Standing Floor Lamp */}

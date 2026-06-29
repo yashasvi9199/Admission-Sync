@@ -2,7 +2,17 @@
 
 All notable changes to the **AeroPunchin** project will be documented in this file.
 
-## [1.1.0] - 2026-06-29
+## [1.2.0] - 2026-06-29
+
+### Fixed
+- **Wrangler WebSocket 101 error**: Changed `--proxy=3001` to `--proxy=http://127.0.0.1:3001` in the dev script to force IPv4 loopback and prevent Miniflare from attempting WebSocket upgrades on an unresolvable `localhost` address.
+- **Cloudflare Functions env var lookup**: `functions/api/turso.ts` now falls back to `VITE_TURSO_DATABASE_URL` / `VITE_TURSO_AUTH_TOKEN` when the non-prefixed variables are absent, matching the secrets exposed in `.env` during local Wrangler dev.
+- **Module import path depth violation**: Replaced all `../../types` relative imports (depth > 1) with the `@/src/types` path alias across all components and store slices.
+
+### Changed
+- **Admin Panel cards**: Removed `hover:scale-[1.02]` zoom effect from all four selection cards (Users, Shifts Configs, HQ & Geofencing, Tardiness Visuals) in the Admin Tab grid menu.
+
+
 
 ### Added
 - **Custom 12-Hour Time Picker**: Dropped native `<input type="time">` clock inputs in favor of custom drop-down selectors (Hour, Minute, AM/PM) for manual logs and timing preset configurations.

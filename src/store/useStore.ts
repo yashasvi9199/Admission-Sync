@@ -436,23 +436,22 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
         const punchDate = new Date(punch.timestamp);
         const today = new Date();
         
-        // Auto-punchout occurs if the punch timestamp has passed the auto punchout threshold for that day
-        const punchLimitToday = new Date(punchDate);
-        punchLimitToday.setHours(outHours, outMins, 0, 0);
+        // Define the auto-punch-out deadline for the punch-in day
+        const deadline = new Date(punchDate);
+        deadline.setHours(outHours, outMins, 0, 0);
 
-        // If current time is past the punch limit of the punch date + 24 hours, or simply on next day past threshold
-        const isNextDay = today.toDateString() !== punchDate.toDateString();
-        const isPastThresholdToday = today.getHours() > outHours || (today.getHours() === outHours && today.getMinutes() >= outMins);
+        // If the deadline is before or equal to the punch-in time, it must fall on the next day
+        if (deadline.getTime() <= punch.timestamp) {
+          deadline.setDate(deadline.getDate() + 1);
+        }
 
-        if (isNextDay || isPastThresholdToday) {
-          const autoOutTime = new Date(punchDate);
-          autoOutTime.setHours(outHours, outMins, 0, 0);
-
+        // Auto-punchout occurs if the current time has passed the deadline
+        if (today.getTime() >= deadline.getTime()) {
           const autoOut: AttendanceRecord = {
             id: crypto.randomUUID(),
             userId: punch.userId,
             name: punch.name,
-            timestamp: autoOutTime.getTime(),
+            timestamp: deadline.getTime(),
             type: 'out',
             latitude: punch.latitude,
             longitude: punch.longitude,

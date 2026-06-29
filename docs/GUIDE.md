@@ -24,15 +24,20 @@ Follow these steps to initialize the project locally:
    ```
 
 ## 4. Environment Configuration
-Create a `.env` file in the project root:
-```env
-LOCATIONIQ_TOKEN="pk.dc7cb6bdb77498f63190516b317f9fd3"
+Create a `.env` file in the project root by copying the example:
+```bash
+cp .env.example .env
 ```
-*Note: A mock/simulated GPS coordinates mode is enabled in the UI for local sandboxed testing without real tokens.*
 
-For wrangler database variables, configure them in wrangler.toml or set them in the environment:
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
+The following variables must be populated in `.env`:
+```env
+VITE_TURSO_DATABASE_URL="libsql://your-db.turso.io"
+VITE_TURSO_AUTH_TOKEN="your-turso-auth-token"
+VITE_LOCATIONIQ_TOKEN="your-locationiq-api-key"
+VITE_GEMINI_API_KEY="your-gemini-key"
+```
+
+> **Note**: The Cloudflare Pages function (`functions/api/turso.ts`) reads these variables with the `VITE_` prefix automatically when running locally via Wrangler. No separate `wrangler.toml` secret mapping is required for dev.
 
 ## 5. Turso Database Setup
 Deploying to a remote Turso DB:
@@ -87,6 +92,10 @@ This project is configured with Capacitor.
 ## 10. Troubleshooting & Syncing
 - **Offline Syncing**: When offline, a red banner appears. Punches are stored locally in the sync queue. Clicking **Sync Queue** once connection is restored uploads the data.
 - **Midnight Auto-Punchout**: If you forget to clock out, the system automatically checks out at the configured time (default 00:00).
+- **Wrangler `TypeError: Web Socket request did not return status 101`**: This occurs when Wrangler resolves `localhost` as IPv6 (`::1`) instead of IPv4. The dev script uses `--proxy=http://127.0.0.1:3001` to explicitly force IPv4. Ensure you are running `npm run dev` unchanged.
+- **`POST /api/turso 500` in dev**: Verify your `.env` file contains the `VITE_TURSO_DATABASE_URL` and `VITE_TURSO_AUTH_TOKEN` variables. The Cloudflare Pages function falls back to the `VITE_`-prefixed keys when the un-prefixed `TURSO_*` variables are not set.
+- **TypeScript import errors with `../../types`**: All type imports must use the `@/src/types` path alias. Paths with depth > 1 (`../../`) are forbidden per governance rules.
+
 
 ## 11. Database Query Testing Recipes
 To verify data consistency and test application features by running queries on your Turso SQLite database, connect to the database shell:

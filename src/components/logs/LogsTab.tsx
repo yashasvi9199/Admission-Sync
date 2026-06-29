@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sliders, MapPin, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
-import { User, AttendanceRecord, OfficeSettings } from '../../types';
+import { User, AttendanceRecord, OfficeSettings } from '@/src/types';
 import { fetchExactLocation, fetchDetailedAddress } from '../../utils/geolocation';
 
 interface LogsTabProps {

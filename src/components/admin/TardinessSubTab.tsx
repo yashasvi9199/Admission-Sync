@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Shift, AttendanceRecord } from '../../types';
+import { User, Shift, AttendanceRecord } from '@/src/types';
 import { Calendar } from 'lucide-react';
 
 interface TardinessSubTabProps {

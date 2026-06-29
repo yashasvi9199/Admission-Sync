@@ -1,5 +1,5 @@
-# Sync State
+# Sync State Tracker
 
-## 2026-06-29
-- **Core Changes**: Rebranded project to AeroPunchin. Completed full user authentication with automatic username generation, first-user admin auto-assignment, break tracking (lunch, coffee, personal), offline punch queue and syncing, leave requests, overtime calculators, tardiness checking, Live Roster dashboard, shifts editor, and CSV/PDF data exporting.
-- **Next Immediate Objectives**: Validate with live user testing, optimize location capture timeout bounds.
+- **Date**: 2026-06-29
+- **Core Changes**: Refactored the entire project structure into OOP slices under 300 lines of code. Implemented 12-hour custom selectors, compulsory passwords validations, grid Admin Dashboard, admin password resets, horizontal round avatars list, Wrangler proxy setups, and sticky toast banners. Verified compiles and builds cleanly.
+- **Next Immediate Objectives**: Await client interaction/testing on staging and local dev servers.

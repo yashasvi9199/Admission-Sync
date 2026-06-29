@@ -135,3 +135,10 @@ SELECT * FROM office_settings;
 -- Check view live roster summary view (Manager reporting view)
 SELECT * FROM view_live_roster;
 ```
+
+### F. Manually Creating an Admin User
+```sql
+-- Insert a new admin user manually
+INSERT INTO users (id, username, first_name, last_name, role, shift_id)
+VALUES ('manual-admin-id', 'admin', 'System', 'Admin', 'Admin', 'shift-morning');
+```

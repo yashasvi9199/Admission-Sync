@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { 
   MapPin, 
@@ -9,54 +9,53 @@ import {
   AlertCircle, 
   BarChart3, 
   ArrowRight,
-  RefreshCw,
   Sliders,
   Trash2,
   Wifi,
+  WifiOff,
   Battery,
   Signal,
   Info,
   Sparkles,
-  Settings
+  Settings,
+  LogOut,
+  Calendar,
+  Coffee,
+  Utensils,
+  Bell,
+  Check,
+  UserCheck
 } from 'lucide-react';
 import SideLamp from './components/SideLamp';
 import AdminPanel from './components/AdminPanel';
-
-// Define structures
-interface AttendanceRecord {
-  id: string;
-  name: string;
-  timestamp: number;
-  latitude: number;
-  longitude: number;
-  synced: boolean;
-  type: 'in' | 'out';
-  address?: string;
-  distanceFromOffice?: number;
-  isRemote?: boolean;
-  accuracy?: number;
-}
-
-interface WorkSession {
-  dateStr: string;
-  loginTime: number;
-  logoutTime: number | null;
-  durationMs: number;
-  latitudeIn: number;
-  longitudeIn: number;
-  latitudeOut?: number;
-  longitudeOut?: number;
-  addressIn?: string;
-  addressOut?: string;
-}
-
-interface EmployeeReport {
-  employeeName: string;
-  sessions: WorkSession[];
-  totalDurationMs: number;
-  completedCount: number;
-  activeCount: number;
-}
+import { 
+  User as DbUser, 
+  Shift, 
+  AttendanceRecord, 
+  BreakRecord, 
+  LeaveRequest, 
+  getStoredUsers, 
+  getStoredShifts, 
+  getStoredAttendance, 
+  getStoredBreaks, 
+  getStoredLeaves, 
+  getStoredOfflineQueue,
+  getActiveUser,
+  registerUser,
+  loginUser,
+  logoutUser,
+  updateUserRole,
+  updateUserShift,
+  addShift,
+  addAttendanceRecord,
+  editAttendanceTimestamp,
+  toggleBreak,
+  getActiveBreak,
+  submitLeave,
+  updateLeaveStatus,
+  syncQueue,
+  performMidnightAutoPunchOut
+} from './db/localDb';
 
 // Haversine formula to compute distance in meters
 function calculateDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -74,215 +73,154 @@ function calculateDistanceInMeters(lat1: number, lon1: number, lat2: number, lon
 }
 
 export default function App() {
-  const [employeeName, setEmployeeName] = useState(() => localStorage.getItem('employeeName') || 'John Doe');
+  // App state
+  const [activeUser, setActiveUser] = useState<DbUser | null>(null);
+  const [users, setUsers] = useState<DbUser[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [breaks, setBreaks] = useState<BreakRecord[]>([]);
+  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+
+  // Authentication form state
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [regFirstName, setRegFirstName] = useState('');
+  const [regLastName, setRegLastName] = useState('');
+  const [regRole, setRegRole] = useState<'Admin' | 'Sales' | 'Developer' | 'HR' | 'Manager' | 'User'>('User');
+  const [regShiftId, setRegShiftId] = useState('');
+  const [loginUsernameVal, setLoginUsernameVal] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Connectivity
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Main navigation
+  const [activeTab, setActiveTab] = useState<'attendance' | 'logs' | 'hours' | 'leaves' | 'admin'>('attendance');
+
+  // Office configuration (defaults)
+  const [officeLat, setOfficeLat] = useState(40.7128);
+  const [officeLon, setOfficeLon] = useState(-74.0060);
+  const [officeName, setOfficeName] = useState('New York HQ');
+  const [geofenceRadius, setGeofenceRadius] = useState(100);
+
+  // Simulation controls
+  const [simulateOffice, setSimulateOffice] = useState(true);
   const [isLogging, setIsLogging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'lamp' | 'logs' | 'reports' | 'admin'>('lamp');
-  const [reportFilter, setReportFilter] = useState<string>('all');
 
-  // Office Geofence & Coordinates Settings (Editable by Admin, defaulting to tighter 100m radius for accuracy)
-  const [officeLat, setOfficeLat] = useState<number>(() => {
-    const saved = localStorage.getItem('officeLat');
-    return saved !== null ? parseFloat(saved) : 40.7128;
-  });
-  const [officeLon, setOfficeLon] = useState<number>(() => {
-    const saved = localStorage.getItem('officeLon');
-    return saved !== null ? parseFloat(saved) : -74.0060;
-  });
-  const [officeName, setOfficeName] = useState<string>(() => {
-    const saved = localStorage.getItem('officeName');
-    return saved || 'New York HQ';
-  });
-  const [geofenceRadius, setGeofenceRadius] = useState<number>(() => {
-    const saved = localStorage.getItem('geofenceRadius');
-    return saved !== null ? parseInt(saved, 10) : 100;
-  });
-  
-  // Simulation toggle for sandboxed environments or easy office testing
-  const [simulateOffice, setSimulateOffice] = useState(() => {
-    const saved = localStorage.getItem('simulate_office');
-    return saved !== null ? JSON.parse(saved) : true;
-  });
+  // Leave Form state
+  const [leaveType, setLeaveType] = useState<'annual' | 'sick' | 'casual' | 'other'>('annual');
+  const [leaveStart, setLeaveStart] = useState('');
+  const [leaveEnd, setLeaveEnd] = useState('');
+  const [leaveReason, setLeaveReason] = useState('');
 
-  // Ambient lamp illumination state
-  const [lampOn, setLampOn] = useState(() => {
-    const saved = localStorage.getItem('ambient_lamp_on');
-    return saved !== null ? JSON.parse(saved) : false;
-  });
-
-  // Current system time for header clock
+  // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // Load configuration and run checkups
   useEffect(() => {
+    // Run midnight punchout check
+    performMidnightAutoPunchOut();
+
+    // Load presets
+    const savedLat = localStorage.getItem('officeLat');
+    const savedLon = localStorage.getItem('officeLon');
+    const savedName = localStorage.getItem('officeName');
+    const savedRadius = localStorage.getItem('geofenceRadius');
+    if (savedLat) setOfficeLat(parseFloat(savedLat));
+    if (savedLon) setOfficeLon(parseFloat(savedLon));
+    if (savedName) setOfficeName(savedName);
+    if (savedRadius) setGeofenceRadius(parseInt(savedRadius, 10));
+
+    // Reload local database states
+    refreshDbStates();
+
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Sync states to local storage
-  useEffect(() => {
-    localStorage.setItem('employeeName', employeeName);
-  }, [employeeName]);
-
-  useEffect(() => {
-    localStorage.setItem('ambient_lamp_on', JSON.stringify(lampOn));
-  }, [lampOn]);
-
-  useEffect(() => {
-    localStorage.setItem('simulate_office', JSON.stringify(simulateOffice));
-  }, [simulateOffice]);
-
-  useEffect(() => {
-    localStorage.setItem('officeLat', officeLat.toString());
-  }, [officeLat]);
-
-  useEffect(() => {
-    localStorage.setItem('officeLon', officeLon.toString());
-  }, [officeLon]);
-
-  useEffect(() => {
-    localStorage.setItem('officeName', officeName);
-  }, [officeName]);
-
-  useEffect(() => {
-    localStorage.setItem('geofenceRadius', geofenceRadius.toString());
-  }, [geofenceRadius]);
-
-  // Load records on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('attendance_records');
-    if (saved) {
-      try {
-        setRecords(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to parse records', e);
-      }
-    } else {
-      // Seed rich history so the app has data out of the box
-      const now = Date.now();
-      const mockRecords: AttendanceRecord[] = [
-        {
-          id: 'mock-1',
-          name: 'John Doe',
-          timestamp: now - 3600000 * 25,
-          latitude: 40.7129,
-          longitude: -74.0059,
-          synced: true,
-          type: 'out',
-          address: '350 5th Ave, New York, NY 10118, USA',
-          distanceFromOffice: 15,
-          isRemote: false
-        },
-        {
-          id: 'mock-2',
-          name: 'John Doe',
-          timestamp: now - 3600000 * 33,
-          latitude: 40.7128,
-          longitude: -74.0060,
-          synced: true,
-          type: 'in',
-          address: 'Empire State Building, 5th Avenue, Koreatown, New York, NY, USA',
-          distanceFromOffice: 0,
-          isRemote: false
-        },
-        {
-          id: 'mock-3',
-          name: 'Sarah Connor',
-          timestamp: now - 3600000 * 3,
-          latitude: 34.0522,
-          longitude: -118.2437,
-          synced: true,
-          type: 'in',
-          address: 'Los Angeles City Hall, 200 N Spring St, Los Angeles, CA 90012, USA',
-          distanceFromOffice: 3930000,
-          isRemote: true
-        }
-      ];
-      setRecords(mockRecords);
-      localStorage.setItem('attendance_records', JSON.stringify(mockRecords));
-    }
-  }, []);
-
-  // Determine current active status of employee
-  const getEmployeeStatus = (name: string): 'in' | 'out' => {
-    const cleanName = name.trim().toLowerCase();
-    if (!cleanName) return 'out';
-    const userRecords = records.filter(r => r.name.trim().toLowerCase() === cleanName);
-    if (userRecords.length === 0) return 'out';
-    
-    const sortedUser = [...userRecords].sort((a, b) => b.timestamp - a.timestamp);
-    return sortedUser[0].type;
+  const refreshDbStates = () => {
+    setActiveUser(getActiveUser());
+    setUsers(getStoredUsers());
+    setRecords(getStoredAttendance());
+    setBreaks(getStoredBreaks());
+    setLeaves(getStoredLeaves());
+    setShifts(getStoredShifts());
+    setOfflineQueueCount(getStoredOfflineQueue().length);
   };
 
-  const currentStatus = getEmployeeStatus(employeeName);
-
-  // Sync lamp state with employee's current state on name change or load
+  // Sync state if connectivity returns online
   useEffect(() => {
-    const status = getEmployeeStatus(employeeName);
-    setLampOn(status === 'in');
-  }, [employeeName, records]);
-
-  // Query LocationIQ reverse geocoding API with high precision settings
-  const reverseGeocode = async (lat: number, lon: number): Promise<string> => {
-    const token = process.env.LOCATIONIQ_TOKEN;
-    if (!token) {
-      console.warn('LocationIQ token is missing in environment variables.');
-      return `New York HQ Area (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+    if (isOnline) {
+      syncQueue();
+      refreshDbStates();
     }
+  }, [isOnline]);
 
-    try {
-      // Query with zoom=18 (building/house level detail) and addressdetails=1
-      const response = await fetch(
-        `https://us1.locationiq.com/v1/reverse?key=${token}&lat=${lat}&lon=${lon}&format=json&zoom=18&addressdetails=1`
-      );
-      if (!response.ok) {
-        throw new Error(`LocationIQ returned error status ${response.status}`);
-      }
-      const data = await response.json();
-      
-      // Construct a highly detailed, clean address string from individual components if available
-      if (data.address) {
-        const { house_number, road, neighbourhood, suburb, city, town, village, county, state, postcode, country } = data.address;
-        const parts: string[] = [];
-        
-        if (house_number) parts.push(house_number);
-        if (road) parts.push(road);
-        
-        const localArea = neighbourhood || suburb;
-        if (localArea) parts.push(localArea);
-        
-        const mainCity = city || town || village;
-        if (mainCity) parts.push(mainCity);
-        
-        if (county) parts.push(county);
-        if (state) parts.push(state);
-        if (postcode) parts.push(postcode);
-        if (country) parts.push(country);
-        
-        if (parts.length > 0) {
-          return parts.join(', ');
-        }
-      }
-      
-      return data.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-    } catch (err) {
-      console.error('Error with LocationIQ reverse geocode:', err);
-      return `Office Perimeter Coordinate (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
-    }
+  // Check username preview on typing names
+  const getUsernamePreview = () => {
+    if (!regFirstName.trim() || !regLastName.trim()) return '';
+    // Mock preview (simplified collisionless version for UI feedback)
+    const first = regFirstName.trim().toLowerCase().replace(/[^a-z]/g, '');
+    const last = regLastName.trim().toLowerCase().replace(/[^a-z]/g, '');
+    return last.length > 0 ? last[0] + first.substring(0, 4) : first.substring(0, 4);
   };
 
-  const handleCheckInOut = async () => {
-    if (!employeeName.trim()) {
-      setError('Please enter your Employee ID or Name first.');
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    const { user, error } = registerUser(regFirstName, regLastName, regRole, regShiftId || shifts[0]?.id);
+    if (error) {
+      setAuthError(error);
       return;
     }
+    // Auto-login
+    loginUser(user.username);
+    setRegFirstName('');
+    setRegLastName('');
+    refreshDbStates();
+    setActiveTab('attendance');
+  };
 
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    const { user, error } = loginUser(loginUsernameVal);
+    if (error) {
+      setAuthError(error);
+      return;
+    }
+    setLoginUsernameVal('');
+    refreshDbStates();
+    setActiveTab('attendance');
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    refreshDbStates();
+  };
+
+  // Determine current active status
+  const getEmployeeStatus = (): 'in' | 'out' => {
+    if (!activeUser) return 'out';
+    const userPunches = records.filter(r => r.userId === activeUser.id);
+    if (userPunches.length === 0) return 'out';
+    const sorted = [...userPunches].sort((a, b) => b.timestamp - a.timestamp);
+    return sorted[0].type;
+  };
+
+  const currentStatus = getEmployeeStatus();
+  const currentBreak = activeUser ? getActiveBreak(activeUser.id) : null;
+
+  // Punch actions
+  const handleCheckInOut = async () => {
+    if (!activeUser) return;
     setIsLogging(true);
     setError(null);
     setSuccessMsg(null);
 
-    const actionType: 'in' | 'out' = currentStatus === 'in' ? 'out' : 'in';
+    const nextType: 'in' | 'out' = currentStatus === 'in' ? 'out' : 'in';
 
     try {
       let latitude = officeLat;
@@ -292,13 +230,11 @@ export default function App() {
 
       if (!simulateOffice) {
         try {
-          // Check/Request permission
           const permStatus = await Geolocation.checkPermissions();
           if (permStatus.location === 'denied') {
             await Geolocation.requestPermissions();
           }
 
-          // Fetch highly accurate GPS lock with 10s timeout
           const position = await Geolocation.getCurrentPosition({
             enableHighAccuracy: true,
             timeout: 10000,
@@ -310,237 +246,179 @@ export default function App() {
           accuracy = position.coords.accuracy;
           usedRealGPS = true;
         } catch (locErr) {
-          console.warn('Physical GPS failed or permission denied, using simulateOffice mode.', locErr);
-          setError('GPS lookup timed out or was blocked. Reverting to Simulated Office location.');
-          // Auto-enable simulation for a seamless fallback
+          console.warn('Physical GPS failed, falling back to simulated HQ coords.', locErr);
           setSimulateOffice(true);
           latitude = officeLat + (Math.random() - 0.5) * 0.001;
           longitude = officeLon + (Math.random() - 0.5) * 0.001;
-          accuracy = Math.floor(Math.random() * 8) + 5; // Sim accuracy: ±5m to ±12m
         }
       } else {
-        // Generate high fidelity coordinate offset within office perimeter (within ~150 meters)
-        latitude = officeLat + (Math.random() - 0.5) * 0.0012;
-        longitude = officeLon + (Math.random() - 0.5) * 0.0012;
-        accuracy = Math.floor(Math.random() * 8) + 4; // Simulated accuracy ±4m to ±11m
+        // Generate coordinates close to HQ
+        latitude = officeLat + (Math.random() - 0.5) * 0.001;
+        longitude = officeLon + (Math.random() - 0.5) * 0.001;
+        accuracy = Math.floor(Math.random() * 8) + 4;
       }
 
-      // Calculate distance to Office
+      // Check distance
       const distance = calculateDistanceInMeters(latitude, longitude, officeLat, officeLon);
       const isRemote = distance > geofenceRadius;
 
-      // Fetch precise, highly detailed reverse geocoded address using LocationIQ with token
-      const address = await reverseGeocode(latitude, longitude);
+      // Sales Role bypasses geofence limits. Regular users are blocked if out of geofence bounds and not simulating
+      if (activeUser.role !== 'Sales' && isRemote && !simulateOffice) {
+        throw new Error(`Geofence Blocked: You are currently ${Math.round(distance)}m from HQ. Only Sales role can punch from anywhere.`);
+      }
 
-      const newRecord: AttendanceRecord = {
-        id: crypto.randomUUID(),
-        name: employeeName.trim(),
+      const addressText = isRemote 
+        ? `Remote Area (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
+        : `${officeName} Area (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+
+      addAttendanceRecord(activeUser.id, {
         timestamp: Date.now(),
+        type: nextType,
         latitude,
         longitude,
-        synced: true,
-        type: actionType,
-        address,
+        address: addressText,
         distanceFromOffice: Math.round(distance),
         isRemote,
         accuracy
-      };
+      }, isOnline);
 
-      const updatedRecords = [newRecord, ...records];
-      setRecords(updatedRecords);
-      localStorage.setItem('attendance_records', JSON.stringify(updatedRecords));
-
-      // Toggle lamp matching the shift state
-      setLampOn(actionType === 'in');
-
-      const accuracyText = accuracy ? ` (Acc: ±${Math.round(accuracy)}m)` : '';
-      const distanceText = isRemote 
-        ? `Remote Punch (${Math.round(distance / 1000)} km away)${accuracyText}` 
-        : `Verified inside Office Perimeter (${Math.round(distance)}m from HQ)${accuracyText}`;
-
-      setSuccessMsg(`Successfully clocked ${actionType.toUpperCase()}! ${distanceText}`);
-      setTimeout(() => setSuccessMsg(null), 6000);
-
+      refreshDbStates();
+      setSuccessMsg(`Successfully clocked ${nextType.toUpperCase()}! ${isRemote ? 'Remote Punch Registered' : 'HQ Geofence Verified'}`);
+      setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Verification failed. Please try again.');
+      setError(err.message || 'Location verification failed.');
     } finally {
       setIsLogging(false);
     }
   };
 
-  const clearAllRecords = () => {
-    if (window.confirm('Are you sure you want to delete all work logs? This action is irreversible.')) {
-      setRecords([]);
-      localStorage.removeItem('attendance_records');
-      setSuccessMsg('Logs cleared successfully.');
-      setTimeout(() => setSuccessMsg(null), 3000);
-    }
+  const handleToggleBreakAction = (type: 'lunch' | 'coffee' | 'personal') => {
+    if (!activeUser) return;
+    toggleBreak(activeUser.id, type, isOnline);
+    refreshDbStates();
   };
 
-  const seedRichHistory = () => {
-    const now = Date.now();
-    const cleanEmp = employeeName.trim() || 'John Doe';
-    const seeded: AttendanceRecord[] = [
-      { id: 's-1', name: cleanEmp, timestamp: now - 3600000 * 2, latitude: 40.7128, longitude: -74.0060, synced: true, type: 'out', address: 'Empire State Building, New York, NY, USA', distanceFromOffice: 5, isRemote: false },
-      { id: 's-2', name: cleanEmp, timestamp: now - 3600000 * 10, latitude: 40.7129, longitude: -74.0061, synced: true, type: 'in', address: 'Empire State Building, New York, NY, USA', distanceFromOffice: 12, isRemote: false },
-      { id: 's-3', name: cleanEmp, timestamp: now - 3600000 * 24, latitude: 40.7127, longitude: -74.0058, synced: true, type: 'out', address: '350 5th Ave, New York, NY, USA', distanceFromOffice: 20, isRemote: false },
-      { id: 's-4', name: cleanEmp, timestamp: now - 3600000 * 32, latitude: 40.7128, longitude: -74.0060, synced: true, type: 'in', address: 'Empire State Building, New York, NY, USA', distanceFromOffice: 0, isRemote: false },
-      { id: 's-5', name: cleanEmp, timestamp: now - 3600000 * 48, latitude: 40.7122, longitude: -74.0051, synced: true, type: 'out', address: 'Koreatown Plaza, Manhattan, NY, USA', distanceFromOffice: 420, isRemote: false },
-      { id: 's-6', name: cleanEmp, timestamp: now - 3600000 * 56, latitude: 40.7128, longitude: -74.0060, synced: true, type: 'in', address: 'Empire State Building, New York, NY, USA', distanceFromOffice: 3, isRemote: false },
-      { id: 's-7', name: 'Sarah Connor', timestamp: now - 3600000 * 6, latitude: 34.0522, longitude: -118.2437, synced: true, type: 'out', address: 'Los Angeles City Hall, CA, USA', distanceFromOffice: 3930000, isRemote: true },
-      { id: 's-8', name: 'Sarah Connor', timestamp: now - 3600000 * 14, latitude: 34.0522, longitude: -118.2437, synced: true, type: 'in', address: 'Los Angeles City Hall, CA, USA', distanceFromOffice: 3930000, isRemote: true },
-    ];
-    setRecords(seeded);
-    localStorage.setItem('attendance_records', JSON.stringify(seeded));
-    setSuccessMsg('Seeded premium attendance records!');
-    setTimeout(() => setSuccessMsg(null), 3000);
+  const handleLeaveSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeUser || !leaveStart || !leaveEnd || !leaveReason.trim()) return;
+
+    submitLeave(activeUser.id, leaveType, leaveStart, leaveEnd, leaveReason.trim(), isOnline);
+    setLeaveStart('');
+    setLeaveEnd('');
+    setLeaveReason('');
+    refreshDbStates();
+    setSuccessMsg('Leave request submitted and pending approval.');
+    setTimeout(() => setSuccessMsg(null), 4000);
   };
 
-  const formatDate = (ms: number) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    }).format(new Date(ms));
+  const handleEditRecordTimestamp = (recordId: string, inputString: string) => {
+    const newDate = new Date(inputString);
+    if (isNaN(newDate.getTime())) return;
+    editAttendanceTimestamp(recordId, newDate.getTime());
+    refreshDbStates();
   };
 
-  const formatDuration = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    if (hours === 0) return `${minutes}m`;
-    return `${hours}h ${minutes}m`;
-  };
+  // Compile calculations for Hours Tab (Overtime)
+  const getUserWorkSummary = () => {
+    if (!activeUser) return { regularMs: 0, overtimeMs: 0, sessions: [] };
 
-  // Compile work sessions & shift summaries
-  const reports = (() => {
-    const groups: { [key: string]: AttendanceRecord[] } = {};
-    records.forEach(r => {
-      const key = r.name.trim();
-      if (!key) return;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(r);
-    });
+    const userPunches = records.filter(r => r.userId === activeUser.id);
+    const sorted = [...userPunches].sort((a, b) => a.timestamp - b.timestamp);
+    const sessions: { date: string; duration: number; regular: number; overtime: number }[] = [];
 
-    const list: EmployeeReport[] = [];
+    let currentIn: AttendanceRecord | null = null;
 
-    Object.entries(groups).forEach(([empName, empRecs]) => {
-      const sorted = [...empRecs].sort((a, b) => a.timestamp - b.timestamp);
-      const sessions: WorkSession[] = [];
-      let currentIn: AttendanceRecord | null = null;
+    sorted.forEach(p => {
+      if (p.type === 'in') {
+        currentIn = p;
+      } else if (p.type === 'out' && currentIn) {
+        const durationMs = p.timestamp - currentIn.timestamp;
+        const durationHrs = durationMs / 3600000;
+        
+        let regularHrs = Math.min(durationHrs, 8);
+        let overtimeHrs = Math.max(0, durationHrs - 8);
 
-      sorted.forEach((record) => {
-        if (record.type === 'in') {
-          if (currentIn) {
-            sessions.push({
-              dateStr: new Date(currentIn.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-              loginTime: currentIn.timestamp,
-              logoutTime: null,
-              durationMs: Date.now() - currentIn.timestamp,
-              latitudeIn: currentIn.latitude,
-              longitudeIn: currentIn.longitude,
-              addressIn: currentIn.address
-            });
-          }
-          currentIn = record;
-        } else {
-          if (currentIn) {
-            sessions.push({
-              dateStr: new Date(currentIn.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-              loginTime: currentIn.timestamp,
-              logoutTime: record.timestamp,
-              durationMs: record.timestamp - currentIn.timestamp,
-              latitudeIn: currentIn.latitude,
-              longitudeIn: currentIn.longitude,
-              latitudeOut: record.latitude,
-              longitudeOut: record.longitude,
-              addressIn: currentIn.address,
-              addressOut: record.address
-            });
-            currentIn = null;
-          } else {
-            sessions.push({
-              dateStr: new Date(record.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-              loginTime: 0,
-              logoutTime: record.timestamp,
-              durationMs: 0,
-              latitudeIn: record.latitude,
-              longitudeIn: record.longitude,
-              latitudeOut: record.latitude,
-              longitudeOut: record.longitude,
-              addressIn: 'Unknown Check-In',
-              addressOut: record.address
-            });
-          }
-        }
-      });
-
-      if (currentIn) {
         sessions.push({
-          dateStr: new Date(currentIn.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          loginTime: currentIn.timestamp,
-          logoutTime: null,
-          durationMs: Date.now() - currentIn.timestamp,
-          latitudeIn: currentIn.latitude,
-          longitudeIn: currentIn.longitude,
-          addressIn: currentIn.address
+          date: new Date(currentIn.timestamp).toLocaleDateString(),
+          duration: durationMs,
+          regular: regularHrs * 3600000,
+          overtime: overtimeHrs * 3600000
         });
+
+        currentIn = null;
       }
-
-      const sortedSessions = sessions.sort((a, b) => {
-        const timeA = a.loginTime || a.logoutTime || 0;
-        const timeB = b.loginTime || b.logoutTime || 0;
-        return timeB - timeA;
-      });
-
-      let totalDurationMs = 0;
-      let completedCount = 0;
-      let activeCount = 0;
-
-      sortedSessions.forEach(s => {
-        if (s.logoutTime !== null && s.loginTime !== 0) {
-          totalDurationMs += s.durationMs;
-          completedCount++;
-        } else if (s.logoutTime === null) {
-          activeCount++;
-          totalDurationMs += (Date.now() - s.loginTime);
-        }
-      });
-
-      list.push({
-        employeeName: empName,
-        sessions: sortedSessions,
-        totalDurationMs,
-        completedCount,
-        activeCount
-      });
     });
 
-    return list;
-  })();
+    if (currentIn) {
+      const runningMs = Date.now() - currentIn.timestamp;
+      const runningHrs = runningMs / 3600000;
+      let regularHrs = Math.min(runningHrs, 8);
+      let overtimeHrs = Math.max(0, runningHrs - 8);
+      sessions.push({
+        date: new Date(currentIn.timestamp).toLocaleDateString(),
+        duration: runningMs,
+        regular: regularHrs * 3600000,
+        overtime: overtimeHrs * 3600000
+      });
+    }
 
-  const uniqueEmployees = Array.from(new Set(records.map(r => r.name.trim()))).filter(Boolean);
+    const totalRegular = sessions.reduce((acc, curr) => acc + curr.regular, 0);
+    const totalOvertime = sessions.reduce((acc, curr) => acc + curr.overtime, 0);
+
+    return {
+      regularMs: totalRegular,
+      overtimeMs: totalOvertime,
+      sessions: sessions.reverse()
+    };
+  };
+
+  // Missing Punch Alarm Check (> 9 hours punched in)
+  const checkMissingPunch = () => {
+    if (!activeUser || currentStatus !== 'in') return false;
+    const userPunches = records.filter(r => r.userId === activeUser.id);
+    const lastIn = [...userPunches].sort((a, b) => b.timestamp - a.timestamp)[0];
+    if (!lastIn) return false;
+    
+    const diffHours = (Date.now() - lastIn.timestamp) / 3600000;
+    return diffHours > 9;
+  };
+
+  // Pre-Shift Reminder Check (15 mins before user shift)
+  const checkPreShiftReminder = () => {
+    if (!activeUser || currentStatus === 'in') return false;
+    const shift = shifts.find(s => s.id === activeUser.shiftId);
+    if (!shift) return false;
+
+    const [shHours, shMins] = shift.startTime.split(':').map(Number);
+    const shiftTimeToday = new Date();
+    shiftTimeToday.setHours(shHours, shMins, 0, 0);
+
+    const diffMins = (shiftTimeToday.getTime() - Date.now()) / 60000;
+    // Highlight if within 0 to 15 minutes before shift start
+    return diffMins > 0 && diffMins <= 15;
+  };
+
+  const workSummary = getUserWorkSummary();
+  const showMissingPunchBanner = checkMissingPunch();
+  const showPreShiftReminder = checkPreShiftReminder();
 
   return (
     <div className={`min-h-screen flex items-center justify-center font-sans p-0 sm:p-6 transition-colors duration-500 ease-in-out ${
-      lampOn 
+      currentStatus === 'in' 
         ? 'bg-[#E2E8F0] text-slate-900' 
         : 'bg-[#030712] text-[#E2E8F0]'
     }`}>
       
-      {/* Smartphone Container - Mobile First view strictly restricted to max-w-md */}
+      {/* Smartphone Frame */}
       <div className={`relative w-full sm:max-w-[410px] h-screen sm:h-[860px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border transition-all duration-500 ${
-        lampOn 
+        currentStatus === 'in' 
           ? 'bg-white border-slate-300 shadow-slate-400/40' 
           : 'bg-[#0F172A] border-slate-800 shadow-black/80'
       }`}>
         
-        {/* Mock Smartphone Statusbar */}
+        {/* Mock Statusbar */}
         <div className={`px-6 pt-3 pb-1 flex justify-between items-center text-[11px] font-black tracking-widest uppercase transition-colors ${
-          lampOn ? 'text-slate-500 bg-slate-50' : 'text-slate-400 bg-slate-950/40'
+          currentStatus === 'in' ? 'text-slate-500 bg-slate-50' : 'text-slate-400 bg-slate-950/40'
         }`}>
           <div>
             {currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false })}
@@ -554,510 +432,741 @@ export default function App() {
 
         {/* Brand App Bar */}
         <header className={`px-5 py-3 border-b flex justify-between items-center shrink-0 transition-all ${
-          lampOn ? 'bg-slate-50/80 border-slate-200' : 'bg-[#1E293B]/60 border-slate-800'
+          currentStatus === 'in' ? 'bg-slate-50/80 border-slate-200' : 'bg-[#1E293B]/60 border-slate-800'
         }`}>
           <div className="flex items-center gap-2">
             <div className="bg-indigo-600 w-8 h-8 rounded-xl flex items-center justify-center text-white font-extrabold shadow-md shadow-indigo-600/30">
-              P
+              A
             </div>
             <div>
-              <h1 className={`text-sm font-black tracking-tight ${lampOn ? 'text-slate-800' : 'text-slate-100'}`}>
-                PunchLine <span className="text-indigo-500 font-extrabold uppercase text-[10px]">HQ</span>
+              <h1 className={`text-sm font-black tracking-tight ${currentStatus === 'in' ? 'text-slate-800' : 'text-slate-100'}`}>
+                AeroPunchin
               </h1>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest -mt-0.5">Office Attendance</p>
+              <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest -mt-0.5">Automated Attendance</p>
             </div>
           </div>
 
-          <div className={`text-[10px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${
-            lampOn 
-              ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
-              : 'bg-emerald-950/40 border-emerald-900/50 text-emerald-400'
-          }`}>
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-            <span>Online</span>
+          <div className="flex items-center gap-2">
+            {/* Sync Alert Queue Count */}
+            {offlineQueueCount > 0 && (
+              <button 
+                onClick={() => { syncQueue(); refreshDbStates(); }}
+                className="text-[9px] font-black bg-amber-500 hover:bg-amber-600 text-slate-950 px-2 py-0.5 rounded-full animate-bounce"
+              >
+                Sync ({offlineQueueCount})
+              </button>
+            )}
+
+            {/* Offline/Online toggle */}
+            <button
+              onClick={() => setIsOnline(!isOnline)}
+              className={`text-[9px] font-bold px-2 py-1 rounded-full border flex items-center gap-1 transition-all ${
+                isOnline 
+                  ? 'bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-900/50 dark:text-emerald-400' 
+                  : 'bg-rose-50 border-rose-100 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/50 dark:text-rose-400'
+              }`}
+            >
+              {isOnline ? (
+                <>
+                  <Wifi className="w-3 h-3" />
+                  <span>Online</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3 text-rose-500 animate-pulse" />
+                  <span>Offline</span>
+                </>
+              )}
+            </button>
+
+            {activeUser && (
+              <button 
+                onClick={handleLogout}
+                title="Logout"
+                className={`p-1.5 rounded-full border ${currentStatus === 'in' ? 'border-slate-200 text-slate-500 hover:bg-slate-100' : 'border-slate-800 text-slate-400 hover:bg-slate-800'}`}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </header>
 
-        {/* Content Area */}
+        {/* Banners & Geolocation Alerts */}
+        {showMissingPunchBanner && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 p-2.5 text-amber-500 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 leading-tight">
+            <Bell className="w-4 h-4 shrink-0 animate-bounce" />
+            <span>Missing Punch: Active for &gt;9 hrs! Clock out or edit timestamps.</span>
+          </div>
+        )}
+
+        {showPreShiftReminder && (
+          <div className="bg-indigo-500/10 border-b border-indigo-500/20 p-2.5 text-indigo-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 leading-tight">
+            <Bell className="w-4 h-4 shrink-0 animate-pulse" />
+            <span>Shift starts in 15 mins! Clock in as you approach the building.</span>
+          </div>
+        )}
+
+        {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto flex flex-col p-4 space-y-4">
           
-          {activeTab === 'lamp' && (
-            <>
-              {/* Profile Card */}
-              <div className={`rounded-2xl p-4 border transition-all ${
-                lampOn 
-                  ? 'bg-slate-50/50 border-slate-200' 
-                  : 'bg-[#1E293B]/70 border-slate-800'
+          {/* AUTHENTICATION VIEW */}
+          {!activeUser ? (
+            <div className="flex-1 flex flex-col justify-center space-y-4">
+              <div className={`p-5 rounded-3xl border transition-all ${
+                currentStatus === 'in' ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
               }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Staff Identity
-                  </span>
-                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                    currentStatus === 'in'
-                      ? 'bg-emerald-500/10 text-emerald-400'
-                      : 'bg-yellow-500/10 text-yellow-400'
-                  }`}>
-                    {currentStatus === 'in' ? 'Shift: Active' : 'Shift: Off-Duty'}
-                  </span>
+                <div className="text-center mb-6">
+                  <h3 className="text-lg font-black tracking-tight text-indigo-500">Welcome to AeroPunchin</h3>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">First user becomes Admin automatically</p>
                 </div>
 
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-4 w-4 text-indigo-500" />
-                  </div>
-                  <input
-                    type="text"
-                    value={employeeName}
-                    onChange={(e) => setEmployeeName(e.target.value)}
-                    placeholder="Name or Employee ID"
-                    className={`pl-9 w-full font-bold text-xs rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 transition-all ${
-                      lampOn 
-                        ? 'bg-white border-slate-200 text-slate-900 placeholder-slate-400' 
-                        : 'bg-[#0F172A] border-slate-850 text-slate-100 placeholder-slate-500'
-                    }`}
-                  />
-                </div>
-
-                {/* Simulation Control */}
-                <div className="mt-3 flex items-center justify-between pt-3 border-t border-dashed border-slate-200 dark:border-slate-800">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    Simulate HQ Presence
-                  </span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={simulateOffice} 
-                      onChange={(e) => setSimulateOffice(e.target.checked)}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-8 h-4 bg-slate-400 dark:bg-slate-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-indigo-500 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Central Interactive Floor Lamp Stage */}
-              <div className={`relative flex-1 rounded-3xl border flex flex-col items-center justify-center p-3 overflow-hidden min-h-[360px] transition-all duration-500 ${
-                lampOn 
-                  ? 'bg-radial from-amber-50/40 via-white to-slate-50 border-slate-200' 
-                  : 'bg-gradient-to-b from-[#0F172A] to-[#020617] border-slate-800'
-              }`}>
-                {/* Corner Status & Actions - Split Left and Right to avoid lamp hindrance */}
-                <div className="absolute top-4 left-4 text-left pointer-events-none z-10 select-none">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                    Shift Status
-                  </p>
-                  <p className={`text-xs font-black uppercase mt-0.5 transition-all flex items-center gap-1 ${
-                    currentStatus === 'in' ? 'text-emerald-500 animate-pulse' : 'text-slate-400'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${currentStatus === 'in' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                    {currentStatus === 'in' ? 'Active' : 'Off-Duty'}
-                  </p>
-                </div>
-
-                <div className="absolute top-4 right-4 text-right pointer-events-none z-10 select-none">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                    Office Light
-                  </p>
-                  <p className={`text-xs font-black uppercase mt-0.5 transition-colors ${
-                    lampOn ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
-                  }`}>
-                    {lampOn ? 'ON' : 'OFF'}
-                  </p>
-                </div>
-
-                <div className="absolute bottom-4 left-4 text-left pointer-events-none z-10 select-none">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                    HQ Geofence
-                  </p>
-                  <p className={`text-[10px] font-black uppercase mt-0.5 ${
-                    lampOn ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
-                  }`}>
-                    &bull; {geofenceRadius}M PERIMETER
-                  </p>
-                </div>
-
-                <div className="absolute bottom-4 right-4 text-right pointer-events-none z-10">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Cord Action
-                  </p>
-                  <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all duration-300 ${
-                    lampOn 
-                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/40 dark:text-indigo-300' 
-                      : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500 dark:text-yellow-400 animate-pulse'
-                  }`}>
-                    {lampOn ? 'Pull to Clock-Out' : 'Pull to Clock-In'}
-                  </span>
-                </div>
-
-                {/* Standing Floor Lamp Component - Size Optimized for Smartphone screen */}
-                <div className="w-full h-[320px] flex items-center justify-center">
-                  <SideLamp 
-                    lampOn={lampOn} 
-                    onToggle={handleCheckInOut} 
-                    disabled={isLogging} 
-                  />
-                </div>
-
-                {/* Spinner inside stage when logging */}
-                {isLogging && (
-                  <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-30">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mb-2" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Securing Location...</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Banners & Geolocation State Feedback */}
-              {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-500/10 text-red-500 text-[11px] rounded-xl border border-red-500/20 text-left">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p className="font-bold">{error}</p>
-                </div>
-              )}
-
-              {successMsg && (
-                <div className="flex items-start gap-2.5 p-3 bg-emerald-500/10 text-emerald-500 text-[11px] rounded-xl border border-emerald-500/20 text-left">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-                  <p className="font-bold">{successMsg}</p>
-                </div>
-              )}
-
-              {/* GPS Scanner / Geographic Metadata Box */}
-              <div className={`p-4 rounded-2xl border transition-all ${
-                lampOn ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
-              }`}>
-                <div className="flex items-center justify-between text-[9px] font-black text-slate-400 border-b border-dashed border-slate-200 dark:border-slate-800 pb-2 mb-3">
-                  <span>GPS GEOFENCE SCANNER</span>
-                  <span className={simulateOffice ? "text-amber-500 font-black" : "text-emerald-500 font-black"}>
-                    {simulateOffice ? "SIMULATED" : "SECURE HARDWARE"}
-                  </span>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 ${
-                    lampOn ? 'bg-indigo-50 border-indigo-100 text-indigo-500' : 'bg-indigo-950/40 border-indigo-900/50 text-indigo-400'
-                  }`}>
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                  <div className="text-xs">
-                    <p className={`font-black uppercase tracking-wider text-[10px] ${lampOn ? 'text-slate-800' : 'text-slate-200'}`}>
-                      {simulateOffice ? `${officeName} (Simulated)` : `${officeName} (Real GPS)`}
-                    </p>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
-                      Office Perimeter: {geofenceRadius}m &bull; Target Coords: {officeLat.toFixed(5)}, {officeLon.toFixed(5)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* List last resolved location */}
-                {records.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/80">
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase mb-1">
-                      <span>Last Recorded Address</span>
-                      {records[0].distanceFromOffice !== undefined && (
-                        <span className={records[0].isRemote ? "text-amber-500" : "text-emerald-500"}>
-                          {records[0].isRemote ? "Remote" : `${records[0].distanceFromOffice}m away`}
-                        </span>
-                      )}
+                {authMode === 'login' ? (
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Username
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. yhaldiya"
+                        value={loginUsernameVal}
+                        onChange={(e) => setLoginUsernameVal(e.target.value)}
+                        className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-1 focus:ring-indigo-500 transition-colors ${
+                          currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                        }`}
+                      />
                     </div>
-                    <p className={`text-[11px] leading-tight font-medium ${lampOn ? 'text-slate-600' : 'text-slate-300'}`}>
-                      {records[0].address || 'No location resolved yet.'}
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-indigo-600/20"
+                    >
+                      Authenticate Sign In
+                    </button>
+                    <p className="text-center text-[10px] text-slate-400 font-bold">
+                      Need a profile?{' '}
+                      <button 
+                        type="button" 
+                        onClick={() => setAuthMode('register')} 
+                        className="text-indigo-400 hover:underline"
+                      >
+                        Register Profile
+                      </button>
                     </p>
+                  </form>
+                ) : (
+                  <form onSubmit={handleRegister} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                          First Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="John"
+                          value={regFirstName}
+                          onChange={(e) => setRegFirstName(e.target.value)}
+                          className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
+                            currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                          Last Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Doe"
+                          value={regLastName}
+                          onChange={(e) => setRegLastName(e.target.value)}
+                          className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
+                            currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Select Core Role
+                      </label>
+                      <select
+                        value={regRole}
+                        onChange={(e) => setRegRole(e.target.value as any)}
+                        className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
+                          currentStatus === 'in' ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-200'
+                        }`}
+                      >
+                        <option value="User">User (Developer/Regular)</option>
+                        <option value="Sales">Sales Role (Clock from anywhere)</option>
+                        <option value="HR">HR Dept</option>
+                        <option value="Manager">Manager</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Assign Initial Shift
+                      </label>
+                      <select
+                        value={regShiftId}
+                        onChange={(e) => setRegShiftId(e.target.value)}
+                        className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
+                          currentStatus === 'in' ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-200'
+                        }`}
+                      >
+                        <option value="">-- Choose Shift --</option>
+                        {shifts.map(s => (
+                          <option key={s.id} value={s.id}>{s.name} ({s.startTime} - {s.endTime})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Live Preview of generateUsername */}
+                    {getUsernamePreview() && (
+                      <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 text-[10px] font-bold">
+                        Generated Username Preview: <span className="underline font-black">{getUsernamePreview()}</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-indigo-600/20"
+                    >
+                      Complete Registration
+                    </button>
+                    <p className="text-center text-[10px] text-slate-400 font-bold">
+                      Already have username?{' '}
+                      <button 
+                        type="button" 
+                        onClick={() => setAuthMode('login')} 
+                        className="text-indigo-400 hover:underline"
+                      >
+                        Log In
+                      </button>
+                    </p>
+                  </form>
+                )}
+
+                {authError && (
+                  <div className="mt-3 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold flex items-center gap-1 animate-shake">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{authError}</span>
                   </div>
                 )}
               </div>
-            </>
-          )}
+            </div>
+          ) : (
+            <>
+              {/* ATTENDANCE WORKFLOW (LAMP STAGE) */}
+              {activeTab === 'attendance' && (
+                <>
+                  {/* Dashboard Profile Overview */}
+                  <div className={`rounded-2xl p-3 border transition-all ${
+                    currentStatus === 'in' ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black">
+                          <UserCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className={`text-[10px] font-black uppercase block ${currentStatus === 'in' ? 'text-slate-800' : 'text-slate-100'}`}>
+                            {activeUser.firstName} {activeUser.lastName}
+                          </span>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest -mt-0.5">
+                            Role: {activeUser.role} &bull; @{activeUser.username}
+                          </span>
+                        </div>
+                      </div>
 
-          {activeTab === 'logs' && (
-            <div className="flex-1 flex flex-col min-h-0">
-              {records.length === 0 ? (
-                <div className="text-center py-16 m-4 border border-dashed border-slate-300 dark:border-slate-800 rounded-2xl flex-1 flex flex-col items-center justify-center">
-                  <Clock className="w-10 h-10 text-slate-400 mb-2 animate-pulse" />
-                  <p className="text-slate-400 text-xs font-black uppercase tracking-widest">No shift logs yet</p>
-                  <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] mx-auto leading-normal">
-                    Pull the cord above to toggle the lamp and register your first attendance activity.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col min-h-0 space-y-3">
-                  <div className="flex justify-between items-center px-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Shift Activity Feed</span>
-                    <button 
-                      onClick={clearAllRecords}
-                      className="text-[9px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 flex items-center gap-1 bg-red-500/5 px-2 py-1 rounded"
-                    >
-                      <Trash2 className="w-3 h-3" /> Clear Logs
-                    </button>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                          currentStatus === 'in'
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-yellow-500/10 text-yellow-400'
+                        }`}>
+                          {currentStatus === 'in' ? 'Active' : 'Off-Duty'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Simulated HQ Presence switch */}
+                    <div className="mt-2.5 pt-2.5 border-t border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        Simulate HQ Location
+                      </span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={simulateOffice} 
+                          onChange={(e) => setSimulateOffice(e.target.checked)}
+                          className="sr-only peer" 
+                        />
+                        <div className="w-8 h-4 bg-slate-400 dark:bg-slate-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-indigo-500 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                    </div>
                   </div>
-                  
+
+                  {/* Interactive Lamp Stage */}
+                  <div className={`relative flex-1 rounded-3xl border flex flex-col items-center justify-center p-3 overflow-hidden min-h-[340px] transition-all duration-500 ${
+                    currentStatus === 'in' 
+                      ? 'bg-radial from-amber-50/40 via-white to-slate-50 border-slate-200' 
+                      : 'bg-gradient-to-b from-[#0F172A] to-[#020617] border-slate-800'
+                  }`}>
+                    {/* Status labels */}
+                    <div className="absolute top-4 left-4 text-left pointer-events-none z-10 select-none">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                        Shift Status
+                      </p>
+                      <p className={`text-xs font-black uppercase mt-0.5 transition-all flex items-center gap-1 ${
+                        currentStatus === 'in' ? 'text-emerald-500 animate-pulse' : 'text-slate-400'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${currentStatus === 'in' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                        {currentStatus === 'in' ? 'Active' : 'Off-Duty'}
+                      </p>
+                    </div>
+
+                    <div className="absolute top-4 right-4 text-right pointer-events-none z-10 select-none">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                        Office Light On/Off
+                      </p>
+                      <p className={`text-xs font-black uppercase mt-0.5 transition-colors ${
+                        currentStatus === 'in' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+                      }`}>
+                        {currentStatus === 'in' ? 'ON' : 'OFF'}
+                      </p>
+                    </div>
+
+                    <div className="absolute bottom-4 left-4 text-left pointer-events-none z-10 select-none">
+                      <p className={`text-[10px] font-black uppercase mt-0.5 ${
+                        currentStatus === 'in' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+                      }`}>
+                        HQ Geofence : {geofenceRadius}M perimeter
+                      </p>
+                    </div>
+
+                    <div className="absolute bottom-4 right-4 text-right pointer-events-none z-10">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        Cord Action
+                      </p>
+                      <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all duration-300 ${
+                        currentStatus === 'in' 
+                          ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/40 dark:text-indigo-300' 
+                          : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500 dark:text-yellow-400 animate-pulse'
+                      }`}>
+                        {currentStatus === 'in' ? 'CLICK TO CLOCK-OUT' : 'CLICK TO CLOCK-IN'}
+                      </span>
+                    </div>
+
+                    {/* Lamp Component */}
+                    <div className="w-full h-[300px] flex items-center justify-center">
+                      <SideLamp 
+                        lampOn={currentStatus === 'in'} 
+                        onToggle={handleCheckInOut} 
+                        disabled={isLogging} 
+                      />
+                    </div>
+
+                    {/* Logging Overlay */}
+                    {isLogging && (
+                      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-30">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mb-2" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Verifying Geofence...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* BREAK TRACKING PANEL (Only active when punched in) */}
+                  {currentStatus === 'in' && (
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      currentStatus === 'in' ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
+                    }`}>
+                      <div className="flex items-center justify-between text-[9px] font-black text-slate-400 border-b border-dashed border-slate-200 dark:border-slate-800 pb-2 mb-3">
+                        <span>BREAK STATUS PANEL</span>
+                        <span className={currentBreak ? "text-amber-500 font-black animate-pulse" : "text-emerald-500 font-black"}>
+                          {currentBreak ? `ON ${currentBreak.type.toUpperCase()} BREAK` : "WORKING"}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => handleToggleBreakAction('lunch')}
+                          className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                            currentBreak?.type === 'lunch'
+                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                          }`}
+                        >
+                          <Utensils className="w-3.5 h-3.5" />
+                          <span>Lunch</span>
+                        </button>
+                        <button
+                          onClick={() => handleToggleBreakAction('coffee')}
+                          className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                            currentBreak?.type === 'coffee'
+                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                          }`}
+                        >
+                          <Coffee className="w-3.5 h-3.5" />
+                          <span>Coffee</span>
+                        </button>
+                        <button
+                          onClick={() => handleToggleBreakAction('personal')}
+                          className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                            currentBreak?.type === 'personal'
+                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                          }`}
+                        >
+                          <User className="w-3.5 h-3.5" />
+                          <span>Personal</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Feedback alerts */}
+                  {error && (
+                    <div className="flex items-start gap-2 p-3 bg-red-500/10 text-red-500 text-[11px] rounded-xl border border-red-500/20 text-left">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <p className="font-bold">{error}</p>
+                    </div>
+                  )}
+
+                  {successMsg && (
+                    <div className="flex items-start gap-2.5 p-3 bg-emerald-500/10 text-emerald-500 text-[11px] rounded-xl border border-emerald-500/20 text-left">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                      <p className="font-bold">{successMsg}</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* LOGS ACTIVITY VIEW */}
+              {activeTab === 'logs' && (
+                <div className="flex-1 flex flex-col min-h-0 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Company Log Feed</span>
+                  </div>
+
                   <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[500px]">
-                    {records.map((record) => (
+                    {records.map(rec => (
                       <div 
-                        key={record.id}
+                        key={rec.id}
                         className={`p-3 rounded-xl border flex flex-col gap-1.5 text-xs transition-colors ${
-                          lampOn ? 'bg-slate-50 border-slate-200' : 'bg-[#1E293B]/40 border-slate-800'
+                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-[#1E293B]/40 border-slate-800'
                         }`}
                       >
                         <div className="flex justify-between items-center">
                           <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider ${
-                            lampOn ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-950/50 text-indigo-400 border border-indigo-900/40'
+                            currentStatus === 'in' ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-950/50 text-indigo-400 border border-indigo-900/40'
                           }`}>
-                            {record.name}
+                            {rec.name}
                           </span>
                           <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                            record.type === 'in'
-                              ? 'bg-emerald-500/10 text-emerald-400'
-                              : 'bg-rose-500/10 text-rose-400'
+                            rec.type === 'in' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
                           }`}>
-                            {record.type === 'in' ? 'Check In' : 'Check Out'}
+                            {rec.type === 'in' ? 'Check In' : 'Check Out'}
                           </span>
                         </div>
 
-                        <p className={`font-semibold ${lampOn ? 'text-slate-700' : 'text-slate-200'}`}>
-                          {formatDate(record.timestamp)}
-                        </p>
-
-                        <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-800">
-                          <span className="font-mono">{record.latitude.toFixed(4)}, {record.longitude.toFixed(4)}</span>
-                          {record.distanceFromOffice !== undefined && (
-                            <span className={record.isRemote ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold'}>
-                              {record.isRemote ? 'Remote' : `${record.distanceFromOffice}m from HQ`}
-                            </span>
-                          )}
-                        </div>
-
-                        {record.address && (
-                          <p className="text-[10px] text-slate-400 leading-normal mt-1 border-t border-slate-150 dark:border-slate-800/40 pt-1">
-                            {record.address}
+                        {/* Date display & Admin timestamp editor */}
+                        {activeUser.role === 'Admin' || activeUser.role === 'Manager' ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-400">Timestamp:</span>
+                            <input
+                              type="datetime-local"
+                              defaultValue={new Date(rec.timestamp - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                              onChange={(e) => handleEditRecordTimestamp(rec.id, e.target.value)}
+                              className={`p-1 rounded text-[10px] font-mono border ${
+                                currentStatus === 'in' ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-200'
+                              }`}
+                            />
+                          </div>
+                        ) : (
+                          <p className={`font-semibold ${currentStatus === 'in' ? 'text-slate-700' : 'text-slate-200'}`}>
+                            {new Date(rec.timestamp).toLocaleString()}
                           </p>
                         )}
+
+                        <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-800">
+                          <span className="font-mono">{rec.latitude.toFixed(4)}, {rec.longitude.toFixed(4)}</span>
+                          <span className={rec.isRemote ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold'}>
+                            {rec.isRemote ? 'Remote' : `${rec.distanceFromOffice}m from HQ`}
+                          </span>
+                        </div>
+
+                        {rec.address && <p className="text-[10px] text-slate-400 leading-normal">{rec.address}</p>}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {activeTab === 'reports' && (
-            <div className="flex-1 flex flex-col min-h-0 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className={`text-xs font-black uppercase tracking-wider ${lampOn ? 'text-slate-700' : 'text-slate-200'}`}>
-                    Shift Summary Report
-                  </h4>
-                  <p className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">Work durations & history</p>
-                </div>
-                
-                {/* Employee Filter */}
-                <select
-                  value={reportFilter}
-                  onChange={(e) => setReportFilter(e.target.value)}
-                  className={`font-black text-[10px] uppercase tracking-wider p-2 rounded-lg border focus:ring-1 focus:ring-indigo-500 ${
-                    lampOn
-                      ? 'bg-white border-slate-200 text-slate-800'
-                      : 'bg-[#0F172A] border-slate-800 text-slate-200'
-                  }`}
-                >
-                  <option value="all">All</option>
-                  {uniqueEmployees.map(emp => (
-                    <option key={emp} value={emp}>{emp}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-4 max-h-[480px]">
-                {reports.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 text-xs font-black uppercase tracking-widest">
-                    Add records to generate reports.
+              {/* HOURS TAB (Calculates regular and overtime) */}
+              {activeTab === 'hours' && (
+                <div className="flex-1 flex flex-col min-h-0 space-y-4">
+                  <div>
+                    <h4 className={`text-xs font-black uppercase tracking-wider ${currentStatus === 'in' ? 'text-slate-700' : 'text-slate-200'}`}>
+                      Shift Duration & Overtime Calculations
+                    </h4>
+                    <p className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">8h Standard Shift Length limit</p>
                   </div>
-                ) : (
-                  reports
-                    .filter(rep => reportFilter === 'all' || rep.employeeName.toLowerCase() === reportFilter.toLowerCase())
-                    .map((report) => (
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl bg-indigo-500/5 border border-indigo-500/10 text-center">
+                      <span className="text-[9px] font-black uppercase text-indigo-400 block mb-1">Regular Hours</span>
+                      <span className="text-lg font-black text-white">
+                        {(workSummary.regularMs / 3600000).toFixed(2)}h
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-amber-500/5 border border-amber-500/10 text-center animate-pulse">
+                      <span className="text-[9px] font-black uppercase text-amber-500 block mb-1">Overtime Hours</span>
+                      <span className="text-lg font-black text-amber-500">
+                        {(workSummary.overtimeMs / 3600000).toFixed(2)}h
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[350px]">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Daily Breakdown</span>
+                    {workSummary.sessions.map((sess, index) => (
                       <div 
-                        key={report.employeeName}
-                        className={`rounded-2xl p-3 border transition-all ${
-                          lampOn ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/40 border-slate-800'
+                        key={index}
+                        className={`p-3 rounded-xl border flex flex-col gap-1 text-xs ${
+                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
                         }`}
                       >
-                        {/* Summary Header */}
-                        <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200 dark:border-slate-800">
-                          <div>
-                            <h5 className="font-black text-xs uppercase tracking-wide text-indigo-500">
-                              {report.employeeName}
-                            </h5>
-                            <span className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">
-                              {report.completedCount} shifts completed
-                            </span>
-                          </div>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg uppercase tracking-wider ${
-                            lampOn ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-950 text-indigo-300'
-                          }`}>
-                            Total: {formatDuration(report.totalDurationMs)}
+                        <div className="flex justify-between items-center font-bold">
+                          <span>{sess.date}</span>
+                          <span>Total: {(sess.duration / 3600000).toFixed(2)}h</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
+                          <span>Regular: {(sess.regular / 3600000).toFixed(2)}h</span>
+                          <span className={sess.overtime > 0 ? "text-amber-500 font-bold" : ""}>
+                            Overtime: {(sess.overtime / 3600000).toFixed(2)}h
                           </span>
                         </div>
-
-                        {/* Shifts Details */}
-                        <div className="space-y-2">
-                          {report.sessions.map((session, idx) => {
-                            const hasLogin = session.loginTime > 0;
-                            const hasLogout = session.logoutTime !== null;
-                            return (
-                              <div 
-                                key={idx}
-                                className={`rounded-xl p-2.5 text-[11px] flex flex-col gap-2 ${
-                                  lampOn ? 'bg-white border border-slate-100' : 'bg-[#0F172A]/70 border border-slate-850'
-                                }`}
-                              >
-                                <div className="flex justify-between items-center">
-                                  <span className={`font-black text-[10px] ${lampOn ? 'text-slate-800' : 'text-slate-100'}`}>
-                                    {session.dateStr}
-                                  </span>
-                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
-                                    !hasLogout ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
-                                  }`}>
-                                    {session.durationMs > 0 ? formatDuration(session.durationMs) : '0m'}
-                                  </span>
-                                </div>
-
-                                <div className="flex items-center justify-between text-[10px] text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-800/80 pt-1.5">
-                                  <div className="flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                                    <span>In: {hasLogin ? formatDate(session.loginTime).split(',')[1] : 'Unknown'}</span>
-                                  </div>
-                                  <ArrowRight className="w-3 h-3 text-slate-500" />
-                                  <div className="flex items-center gap-1">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${hasLogout ? 'bg-rose-500' : 'bg-amber-500 animate-pulse'}`} />
-                                    <span>Out: {hasLogout ? formatDate(session.logoutTime!).split(',')[1] : 'Working...'}</span>
-                                  </div>
-                                </div>
-
-                                {/* Address lines inside report */}
-                                {(session.addressIn || session.addressOut) && (
-                                  <div className="text-[9px] text-slate-500 leading-normal border-t border-slate-100 dark:border-slate-800/40 pt-1.5 mt-0.5 space-y-1">
-                                    {session.addressIn && (
-                                      <p className="truncate"><span className="font-extrabold uppercase text-[8px]">In Loc:</span> {session.addressIn}</p>
-                                    )}
-                                    {session.addressOut && (
-                                      <p className="truncate"><span className="font-extrabold uppercase text-[8px]">Out Loc:</span> {session.addressOut}</p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
                       </div>
-                    ))
-                )}
-              </div>
-            </div>
-          )}
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {activeTab === 'admin' && (
-            <AdminPanel
-              lampOn={lampOn}
-              officeName={officeName}
-              officeLat={officeLat}
-              officeLon={officeLon}
-              geofenceRadius={geofenceRadius}
-              onSaveSettings={(name, lat, lon, radius) => {
-                setOfficeName(name);
-                setOfficeLat(lat);
-                setOfficeLon(lon);
-                setGeofenceRadius(radius);
-              }}
-            />
+              {/* LEAVE PORTAL */}
+              {activeTab === 'leaves' && (
+                <div className="flex-1 flex flex-col min-h-0 space-y-4">
+                  <div>
+                    <h4 className={`text-xs font-black uppercase tracking-wider ${currentStatus === 'in' ? 'text-slate-700' : 'text-slate-200'}`}>
+                      Leave Requests Hub
+                    </h4>
+                    <p className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">Submit & monitor leaves requests</p>
+                  </div>
+
+                  {/* Submit request form */}
+                  <form onSubmit={handleLeaveSubmit} className="p-3.5 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 space-y-3">
+                    <span className="text-[9px] font-black uppercase text-indigo-400 block">File Leave Request</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Start Date</label>
+                        <input
+                          type="date"
+                          value={leaveStart}
+                          onChange={(e) => setLeaveStart(e.target.value)}
+                          className={`w-full p-2 rounded text-xs ${
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-800 text-white'
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">End Date</label>
+                        <input
+                          type="date"
+                          value={leaveEnd}
+                          onChange={(e) => setLeaveEnd(e.target.value)}
+                          className={`w-full p-2 rounded text-xs ${
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-800 text-white'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Leave Type</label>
+                        <select
+                          value={leaveType}
+                          onChange={(e) => setLeaveType(e.target.value as any)}
+                          className={`w-full p-2 rounded text-xs ${
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-850' : 'bg-slate-950 border-slate-800 text-slate-200'
+                          }`}
+                        >
+                          <option value="annual">Annual</option>
+                          <option value="sick">Sick</option>
+                          <option value="casual">Casual</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Reason Description</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Family function, rest"
+                        value={leaveReason}
+                        onChange={(e) => setLeaveReason(e.target.value)}
+                        className={`w-full p-2 rounded text-xs ${
+                          currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-850' : 'bg-slate-950 border-slate-800 text-white'
+                        }`}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors"
+                    >
+                      Submit Leave Request
+                    </button>
+                  </form>
+
+                  {/* Users leaves list */}
+                  <div className="flex-1 overflow-y-auto space-y-2 max-h-[220px]">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">My Submitted Leaves</span>
+                    {leaves.filter(l => l.userId === activeUser.id).map(l => (
+                      <div 
+                        key={l.id}
+                        className={`p-2.5 rounded-xl border flex justify-between items-center text-xs ${
+                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        }`}
+                      >
+                        <div>
+                          <span className="font-bold uppercase text-[9px] text-indigo-400">{l.type} Leave</span>
+                          <p className="text-[8px] text-slate-400 mt-0.5">Dates: {l.startDate} to {l.endDate}</p>
+                          <p className="italic text-[9px] text-slate-300">"{l.reason}"</p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                          l.status === 'approved' 
+                            ? 'bg-emerald-500/10 text-emerald-400' 
+                            : l.status === 'rejected'
+                              ? 'bg-rose-500/10 text-rose-400'
+                              : 'bg-yellow-500/10 text-yellow-400'
+                        }`}>
+                          {l.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ADMIN SETTINGS VIEW */}
+              {activeTab === 'admin' && (
+                <AdminPanel
+                  lampOn={currentStatus === 'in'}
+                  officeName={officeName}
+                  officeLat={officeLat}
+                  officeLon={officeLon}
+                  geofenceRadius={geofenceRadius}
+                  users={users}
+                  attendanceRecords={records}
+                  breaks={breaks}
+                  leaves={leaves}
+                  shifts={shifts}
+                  onSaveSettings={(name, lat, lon, radius) => {
+                    setOfficeName(name);
+                    setOfficeLat(lat);
+                    setOfficeLon(lon);
+                    setGeofenceRadius(radius);
+                    localStorage.setItem('officeLat', lat.toString());
+                    localStorage.setItem('officeLon', lon.toString());
+                    localStorage.setItem('officeName', name);
+                    localStorage.setItem('geofenceRadius', radius.toString());
+                    refreshDbStates();
+                  }}
+                  onUpdateUserRole={(userId, role) => {
+                    updateUserRole(userId, role);
+                    refreshDbStates();
+                  }}
+                  onUpdateUserShift={(userId, shiftId) => {
+                    updateUserShift(userId, shiftId);
+                    refreshDbStates();
+                  }}
+                  onCreateShift={(name, start, end, grace) => {
+                    addShift(name, start, end, grace);
+                    refreshDbStates();
+                  }}
+                  onApproveRejectLeave={(leaveId, status) => {
+                    updateLeaveStatus(leaveId, status, activeUser.id);
+                    refreshDbStates();
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
 
-        {/* Developer Admin Actions Bar */}
-        <div className={`px-4 py-2 border-t flex justify-between items-center shrink-0 text-[10px] ${
-          lampOn ? 'bg-slate-50 border-slate-250 text-slate-500' : 'bg-[#0B0F19] border-slate-850 text-slate-400'
-        }`}>
-          <button 
-            onClick={seedRichHistory}
-            className="hover:text-indigo-500 flex items-center gap-1 py-1 font-bold uppercase tracking-wider"
-          >
-            <RefreshCw className="w-3 h-3" /> Seed Demo
-          </button>
-          <span className="font-mono text-[9px] opacity-60">
-            LocationIQ Sync Active
-          </span>
-        </div>
+        {/* Smartphone Navigation Bar */}
+        {activeUser && (
+          <nav className={`border-t flex justify-around py-3 px-1 shrink-0 transition-all duration-500 ${
+            currentStatus === 'in' ? 'bg-slate-50 border-slate-250' : 'bg-[#0B0F19] border-slate-850'
+          }`}>
+            <button
+              onClick={() => setActiveTab('attendance')}
+              className={`flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-xl transition-all ${
+                activeTab === 'attendance' ? 'text-indigo-500' : 'text-slate-400 hover:text-slate-350'
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              <span className="text-[8px] font-black uppercase tracking-wider">Attendance</span>
+            </button>
 
-        {/* Mock Mobile Navigation Bar */}
-        <nav className={`border-t flex justify-around py-3 px-2 shrink-0 transition-all duration-500 ${
-          lampOn ? 'bg-slate-50 border-slate-250' : 'bg-[#0B0F19] border-slate-850'
-        }`}>
-          <button
-            onClick={() => setActiveTab('lamp')}
-            className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl transition-all ${
-              activeTab === 'lamp'
-                ? 'text-indigo-500'
-                : 'text-slate-400 hover:text-slate-500'
-            }`}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-              activeTab === 'lamp' ? 'bg-indigo-500/10' : ''
-            }`}>
-              <Clock className="w-5 h-5" />
-            </div>
-            <span className="text-[9px] font-black uppercase tracking-wider">Attendance</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-xl transition-all ${
+                activeTab === 'logs' ? 'text-indigo-500' : 'text-slate-400 hover:text-slate-350'
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              <span className="text-[8px] font-black uppercase tracking-wider">Logs</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl transition-all ${
-              activeTab === 'logs'
-                ? 'text-indigo-500'
-                : 'text-slate-400 hover:text-slate-500'
-            }`}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-              activeTab === 'logs' ? 'bg-indigo-500/10' : ''
-            }`}>
-              <Sliders className="w-5 h-5" />
-            </div>
-            <span className="text-[9px] font-black uppercase tracking-wider">Activity Feed</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('hours')}
+              className={`flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-xl transition-all ${
+                activeTab === 'hours' ? 'text-indigo-500' : 'text-slate-400 hover:text-slate-350'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span className="text-[8px] font-black uppercase tracking-wider">Hours</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl transition-all ${
-              activeTab === 'reports'
-                ? 'text-indigo-500'
-                : 'text-slate-400 hover:text-slate-500'
-            }`}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-              activeTab === 'reports' ? 'bg-indigo-500/10' : ''
-            }`}>
-              <BarChart3 className="w-5 h-5" />
-            </div>
-            <span className="text-[9px] font-black uppercase tracking-wider">Hours</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('leaves')}
+              className={`flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-xl transition-all ${
+                activeTab === 'leaves' ? 'text-indigo-500' : 'text-slate-400 hover:text-slate-350'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span className="text-[8px] font-black uppercase tracking-wider">Leaves</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl transition-all ${
-              activeTab === 'admin'
-                ? 'text-indigo-500'
-                : 'text-slate-400 hover:text-slate-500'
-            }`}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-              activeTab === 'admin' ? 'bg-indigo-500/10' : ''
-            }`}>
-              <Settings className="w-5 h-5" />
-            </div>
-            <span className="text-[9px] font-black uppercase tracking-wider">Admin Settings</span>
-          </button>
-        </nav>
+            {(activeUser.role === 'Admin' || activeUser.role === 'Manager') && (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className={`flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-xl transition-all ${
+                  activeTab === 'admin' ? 'text-indigo-500' : 'text-slate-400 hover:text-slate-350'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                <span className="text-[8px] font-black uppercase tracking-wider">Admin</span>
+              </button>
+            )}
+          </nav>
+        )}
 
       </div>
     </div>

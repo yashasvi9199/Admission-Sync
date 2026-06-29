@@ -8,8 +8,8 @@ export const onRequest = async (context: any) => {
     });
   }
 
-  const dbUrl = env.TURSO_DATABASE_URL;
-  const token = env.TURSO_AUTH_TOKEN;
+  const dbUrl = env.TURSO_DATABASE_URL || env.VITE_TURSO_DATABASE_URL;
+  const token = env.TURSO_AUTH_TOKEN || env.VITE_TURSO_AUTH_TOKEN;
 
   if (!dbUrl || !token) {
     return new Response(JSON.stringify({ 

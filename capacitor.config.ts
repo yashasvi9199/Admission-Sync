@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.office.attendance',
-  appName: 'Office Attendance',
+  appId: 'com.aeropunchin.app',
+  appName: 'AeroPunchin',
   webDir: 'dist',
   plugins: {
     Geolocation: {

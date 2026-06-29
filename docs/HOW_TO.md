@@ -17,6 +17,12 @@ Run compilation checks before committing code:
 npm run lint
 ```
 
+### Debugging Wrangler 500 Errors
+If you see `POST /api/turso 500` or `WebSocket 101` errors during `npm run dev`:
+1. Confirm `.env` has `VITE_TURSO_DATABASE_URL` and `VITE_TURSO_AUTH_TOKEN` set.
+2. Confirm the dev script uses `--proxy=http://127.0.0.1:3001` (not just `--proxy=3001`).
+3. Kill any stray Vite processes on port 3001 and re-run `npm run dev`.
+
 ## Database Operations
 
 ### Resetting Simulated Local DB

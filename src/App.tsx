@@ -89,6 +89,7 @@ export default function App() {
   const [regRole, setRegRole] = useState<'Admin' | 'Sales' | 'Developer' | 'HR' | 'Manager' | 'User'>('User');
   const [regShiftId, setRegShiftId] = useState('');
   const [loginUsernameVal, setLoginUsernameVal] = useState('');
+  const [loginPasswordVal, setLoginPasswordVal] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Connectivity
@@ -186,12 +187,13 @@ export default function App() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    const { user, error } = loginUser(loginUsernameVal);
+    const { user, error } = loginUser(loginUsernameVal, loginPasswordVal);
     if (error) {
       setAuthError(error);
       return;
     }
     setLoginUsernameVal('');
+    setLoginPasswordVal('');
     refreshDbStates();
     setActiveTab('attendance');
   };
@@ -531,6 +533,20 @@ export default function App() {
                         placeholder="e.g. yhaldiya"
                         value={loginUsernameVal}
                         onChange={(e) => setLoginUsernameVal(e.target.value)}
+                        className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-1 focus:ring-indigo-500 transition-colors ${
+                          currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Password (optional)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="e.g. admin"
+                        value={loginPasswordVal}
+                        onChange={(e) => setLoginPasswordVal(e.target.value)}
                         className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-1 focus:ring-indigo-500 transition-colors ${
                           currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
                         }`}

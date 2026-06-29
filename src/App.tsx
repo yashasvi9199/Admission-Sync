@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Geolocation } from '@capacitor/geolocation';
 import { 
   MapPin, 
   Clock, 
@@ -10,52 +9,23 @@ import {
   BarChart3, 
   ArrowRight,
   Sliders,
-  Trash2,
   Wifi,
   WifiOff,
   Battery,
   Signal,
-  Info,
   Sparkles,
   Settings,
   LogOut,
   Calendar,
-  Coffee,
-  Utensils,
   Bell,
   Check,
   UserCheck
 } from 'lucide-react';
 import SideLamp from './components/SideLamp';
 import AdminPanel from './components/AdminPanel';
-import { 
-  User as DbUser, 
-  Shift, 
-  AttendanceRecord, 
-  BreakRecord, 
-  LeaveRequest, 
-  getStoredUsers, 
-  getStoredShifts, 
-  getStoredAttendance, 
-  getStoredBreaks, 
-  getStoredLeaves, 
-  getStoredOfflineQueue,
-  getActiveUser,
-  registerUser,
-  loginUser,
-  logoutUser,
-  updateUserRole,
-  updateUserShift,
-  addShift,
-  addAttendanceRecord,
-  editAttendanceTimestamp,
-  toggleBreak,
-  getActiveBreak,
-  submitLeave,
-  updateLeaveStatus,
-  syncQueue,
-  performMidnightAutoPunchOut
-} from './db/localDb';
+import { useStore } from './store/useStore';
+import { fetchExactLocation, fetchDetailedAddress } from './utils/geolocation';
+import { AttendanceRecord } from './db/localDb';
 
 // Haversine formula to compute distance in meters
 function calculateDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -73,14 +43,33 @@ function calculateDistanceInMeters(lat1: number, lon1: number, lat2: number, lon
 }
 
 export default function App() {
-  // App state
-  const [activeUser, setActiveUser] = useState<DbUser | null>(null);
-  const [users, setUsers] = useState<DbUser[]>([]);
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [breaks, setBreaks] = useState<BreakRecord[]>([]);
-  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  // Access Zustand store
+  const {
+    activeUser,
+    users,
+    records,
+    breaks,
+    leaves,
+    shifts,
+    officeSettings,
+    offlineQueue,
+    refreshStates,
+    login,
+    logout,
+    register,
+    adminCreateUser,
+    punchShift,
+    triggerBreak,
+    requestLeave,
+    updateLeaveStatus,
+    editRecordTimestamp,
+    changeUserRole,
+    changeUserShift,
+    createNewShift,
+    updateOfficeSettings,
+    processOfflineQueue,
+    checkMidnightAutoPunchOut
+  } = useStore();
 
   // Authentication form state
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -98,12 +87,6 @@ export default function App() {
   // Main navigation
   const [activeTab, setActiveTab] = useState<'attendance' | 'logs' | 'hours' | 'leaves' | 'admin'>('attendance');
 
-  // Office configuration (defaults)
-  const [officeLat, setOfficeLat] = useState(40.7128);
-  const [officeLon, setOfficeLon] = useState(-74.0060);
-  const [officeName, setOfficeName] = useState('New York HQ');
-  const [geofenceRadius, setGeofenceRadius] = useState(100);
-
   // Simulation controls
   const [simulateOffice, setSimulateOffice] = useState(true);
   const [isLogging, setIsLogging] = useState(false);
@@ -111,111 +94,73 @@ export default function App() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Leave Form state
-  const [leaveType, setLeaveType] = useState<'annual' | 'sick' | 'casual' | 'other'>('annual');
-  const [leaveStart, setLeaveStart] = useState('');
-  const [leaveEnd, setLeaveEnd] = useState('');
+  const [leaveStart, setLeaveStart] = useState(() => new Date().toISOString().split('T')[0]); // Default to today's date
+  const [leaveEnd, setLeaveEnd] = useState(''); // Default empty/non-numeric
   const [leaveReason, setLeaveReason] = useState('');
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Load configuration and run checkups
+  // Load and refresh state triggers
   useEffect(() => {
-    // Run midnight punchout check
-    performMidnightAutoPunchOut();
-
-    // Load presets
-    const savedLat = localStorage.getItem('officeLat');
-    const savedLon = localStorage.getItem('officeLon');
-    const savedName = localStorage.getItem('officeName');
-    const savedRadius = localStorage.getItem('geofenceRadius');
-    if (savedLat) setOfficeLat(parseFloat(savedLat));
-    if (savedLon) setOfficeLon(parseFloat(savedLon));
-    if (savedName) setOfficeName(savedName);
-    if (savedRadius) setGeofenceRadius(parseInt(savedRadius, 10));
-
-    // Reload local database states
-    refreshDbStates();
-
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    refreshStates();
+    const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(clockTimer);
   }, []);
 
-  const refreshDbStates = () => {
-    setActiveUser(getActiveUser());
-    setUsers(getStoredUsers());
-    setRecords(getStoredAttendance());
-    setBreaks(getStoredBreaks());
-    setLeaves(getStoredLeaves());
-    setShifts(getStoredShifts());
-    setOfflineQueueCount(getStoredOfflineQueue().length);
-  };
+  // Run midnight check on refresh
+  useEffect(() => {
+    checkMidnightAutoPunchOut();
+  }, [records]);
 
-  // Sync state if connectivity returns online
+  // Bulk sync queue when toggling Online
   useEffect(() => {
     if (isOnline) {
-      syncQueue();
-      refreshDbStates();
+      processOfflineQueue();
     }
   }, [isOnline]);
-
-  // Check username preview on typing names
-  const getUsernamePreview = () => {
-    if (!regFirstName.trim() || !regLastName.trim()) return '';
-    // Mock preview (simplified collisionless version for UI feedback)
-    const first = regFirstName.trim().toLowerCase().replace(/[^a-z]/g, '');
-    const last = regLastName.trim().toLowerCase().replace(/[^a-z]/g, '');
-    return last.length > 0 ? last[0] + first.substring(0, 4) : first.substring(0, 4);
-  };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    const { user, error } = registerUser(regFirstName, regLastName, regRole, regShiftId || shifts[0]?.id);
+    const { user, error } = register(regFirstName, regLastName, regRole, regShiftId || shifts[0]?.id);
     if (error) {
       setAuthError(error);
       return;
     }
-    // Auto-login
-    loginUser(user.username);
     setRegFirstName('');
     setRegLastName('');
-    refreshDbStates();
     setActiveTab('attendance');
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    const { user, error } = loginUser(loginUsernameVal, loginPasswordVal);
+    const { user, error } = login(loginUsernameVal, loginPasswordVal);
     if (error) {
       setAuthError(error);
       return;
     }
     setLoginUsernameVal('');
     setLoginPasswordVal('');
-    refreshDbStates();
     setActiveTab('attendance');
   };
 
   const handleLogout = () => {
-    logoutUser();
-    refreshDbStates();
+    logout();
+    setActiveTab('attendance');
   };
 
-  // Determine current active status
-  const getEmployeeStatus = (): 'in' | 'out' => {
+  // Determine current punch status
+  const currentStatus = (() => {
     if (!activeUser) return 'out';
     const userPunches = records.filter(r => r.userId === activeUser.id);
     if (userPunches.length === 0) return 'out';
     const sorted = [...userPunches].sort((a, b) => b.timestamp - a.timestamp);
     return sorted[0].type;
-  };
+  })();
 
-  const currentStatus = getEmployeeStatus();
-  const currentBreak = activeUser ? getActiveBreak(activeUser.id) : null;
-
-  // Punch actions
   const handleCheckInOut = async () => {
     if (!activeUser) return;
     setIsLogging(true);
@@ -225,99 +170,81 @@ export default function App() {
     const nextType: 'in' | 'out' = currentStatus === 'in' ? 'out' : 'in';
 
     try {
-      let latitude = officeLat;
-      let longitude = officeLon;
-      let usedRealGPS = false;
-      let accuracy: number | undefined = undefined;
+      // 1. Capture Coordinates using layered Geolocation (native hardware falling back to simulation)
+      const location = await fetchExactLocation(simulateOffice, officeSettings.latitude, officeSettings.longitude);
 
-      if (!simulateOffice) {
-        try {
-          const permStatus = await Geolocation.checkPermissions();
-          if (permStatus.location === 'denied') {
-            await Geolocation.requestPermissions();
-          }
+      // 2. Perform Geofencing calculations
+      const distance = calculateDistanceInMeters(
+        location.latitude, 
+        location.longitude, 
+        officeSettings.latitude, 
+        officeSettings.longitude
+      );
+      const isRemote = distance > officeSettings.geofenceRadius;
 
-          const position = await Geolocation.getCurrentPosition({
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          });
-
-          latitude = position.coords.latitude;
-          longitude = position.coords.longitude;
-          accuracy = position.coords.accuracy;
-          usedRealGPS = true;
-        } catch (locErr) {
-          console.warn('Physical GPS failed, falling back to simulated HQ coords.', locErr);
-          setSimulateOffice(true);
-          latitude = officeLat + (Math.random() - 0.5) * 0.001;
-          longitude = officeLon + (Math.random() - 0.5) * 0.001;
-        }
-      } else {
-        // Generate coordinates close to HQ
-        latitude = officeLat + (Math.random() - 0.5) * 0.001;
-        longitude = officeLon + (Math.random() - 0.5) * 0.001;
-        accuracy = Math.floor(Math.random() * 8) + 4;
-      }
-
-      // Check distance
-      const distance = calculateDistanceInMeters(latitude, longitude, officeLat, officeLon);
-      const isRemote = distance > geofenceRadius;
-
-      // Sales Role bypasses geofence limits. Regular users are blocked if out of geofence bounds and not simulating
+      // 3. Role verification (Sales role can clock from anywhere, other roles must satisfy geofencing)
       if (activeUser.role !== 'Sales' && isRemote && !simulateOffice) {
-        throw new Error(`Geofence Blocked: You are currently ${Math.round(distance)}m from HQ. Only Sales role can punch from anywhere.`);
+        throw new Error(
+          `Geofence Restrained: You are currently ${Math.round(distance)}m from office perimeter. Punching blocked.`
+        );
       }
 
-      const addressText = isRemote 
-        ? `Remote Area (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
-        : `${officeName} Area (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+      // 4. Reverse Geocode address details via LocationIQ
+      const address = await fetchDetailedAddress(location.latitude, location.longitude);
 
-      addAttendanceRecord(activeUser.id, {
-        timestamp: Date.now(),
-        type: nextType,
-        latitude,
-        longitude,
-        address: addressText,
-        distanceFromOffice: Math.round(distance),
-        isRemote,
-        accuracy
-      }, isOnline);
+      // 5. Punch to database
+      punchShift(
+        nextType, 
+        location.latitude, 
+        location.longitude, 
+        address, 
+        Math.round(distance), 
+        isRemote, 
+        location.accuracy, 
+        isOnline
+      );
 
-      refreshDbStates();
-      setSuccessMsg(`Successfully clocked ${nextType.toUpperCase()}! ${isRemote ? 'Remote Punch Registered' : 'HQ Geofence Verified'}`);
+      setSuccessMsg(`Successfully clocked ${nextType.toUpperCase()}!`);
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
-      setError(err.message || 'Location verification failed.');
+      setError(err.message || 'Verification failed. Please try again.');
     } finally {
       setIsLogging(false);
     }
   };
 
-  const handleToggleBreakAction = (type: 'lunch' | 'coffee' | 'personal') => {
-    if (!activeUser) return;
-    toggleBreak(activeUser.id, type, isOnline);
-    refreshDbStates();
-  };
-
   const handleLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeUser || !leaveStart || !leaveEnd || !leaveReason.trim()) return;
+    setLeaveError(null);
 
-    submitLeave(activeUser.id, leaveType, leaveStart, leaveEnd, leaveReason.trim(), isOnline);
-    setLeaveStart('');
+    if (!leaveStart || !leaveEnd || !leaveReason.trim()) {
+      setLeaveError('Error: Please specify the leave end date and detail reason.');
+      return;
+    }
+
+    const res = requestLeave(leaveStart, leaveEnd, leaveReason.trim(), isOnline);
+    if (res.error) {
+      setLeaveError(res.error);
+      return;
+    }
+
+    // Reset date picker defaults
+    setLeaveStart(new Date().toISOString().split('T')[0]);
     setLeaveEnd('');
     setLeaveReason('');
-    refreshDbStates();
-    setSuccessMsg('Leave request submitted and pending approval.');
+    setSuccessMsg('Leave request successfully filed and pending approval.');
     setTimeout(() => setSuccessMsg(null), 4000);
   };
 
-  const handleEditRecordTimestamp = (recordId: string, inputString: string) => {
-    const newDate = new Date(inputString);
-    if (isNaN(newDate.getTime())) return;
-    editAttendanceTimestamp(recordId, newDate.getTime());
-    refreshDbStates();
+  const handleCaptureCoordinatesCallback = async () => {
+    // Highly accurate triangulation callback for settings panel settings calibration
+    const location = await fetchExactLocation(false, officeSettings.latitude, officeSettings.longitude);
+    const address = await fetchDetailedAddress(location.latitude, location.longitude);
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      address
+    };
   };
 
   // Compile calculations for Hours Tab (Overtime)
@@ -374,8 +301,8 @@ export default function App() {
     };
   };
 
-  // Missing Punch Alarm Check (> 9 hours punched in)
-  const checkMissingPunch = () => {
+  // Automated Alert: Missing Punch Alerts (> 9 hours punched in)
+  const isMissingPunchActive = () => {
     if (!activeUser || currentStatus !== 'in') return false;
     const userPunches = records.filter(r => r.userId === activeUser.id);
     const lastIn = [...userPunches].sort((a, b) => b.timestamp - a.timestamp)[0];
@@ -385,8 +312,8 @@ export default function App() {
     return diffHours > 9;
   };
 
-  // Pre-Shift Reminder Check (15 mins before user shift)
-  const checkPreShiftReminder = () => {
+  // Automated Alert: Pre-Shift Reminder (15 mins before user shift starts)
+  const isPreShiftReminderActive = () => {
     if (!activeUser || currentStatus === 'in') return false;
     const shift = shifts.find(s => s.id === activeUser.shiftId);
     if (!shift) return false;
@@ -396,25 +323,41 @@ export default function App() {
     shiftTimeToday.setHours(shHours, shMins, 0, 0);
 
     const diffMins = (shiftTimeToday.getTime() - Date.now()) / 60000;
-    // Highlight if within 0 to 15 minutes before shift start
     return diffMins > 0 && diffMins <= 15;
   };
 
+  // Date and Time Formatting utils
+  const formatDetailedDate = (ms: number) => {
+    return new Date(ms).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    }); // Output e.g. "02 June 2026"
+  };
+
+  const format12HourTime = (ms: number) => {
+    return new Date(ms).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: true 
+    }); // Output e.g. "4:15 PM"
+  };
+
   const workSummary = getUserWorkSummary();
-  const showMissingPunchBanner = checkMissingPunch();
-  const showPreShiftReminder = checkPreShiftReminder();
+  const showMissingPunchBanner = isMissingPunchActive();
+  const showPreShiftReminder = isPreShiftReminderActive();
 
   return (
     <div className={`min-h-screen flex items-center justify-center font-sans p-0 sm:p-6 transition-colors duration-500 ease-in-out ${
       currentStatus === 'in' 
-        ? 'bg-[#E2E8F0] text-slate-900' 
+        ? 'bg-[#F1F5F9] text-[#1E293B]' 
         : 'bg-[#030712] text-[#E2E8F0]'
     }`}>
       
-      {/* Smartphone Frame */}
+      {/* Smartphone Outer Container */}
       <div className={`relative w-full sm:max-w-[410px] h-screen sm:h-[860px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden border transition-all duration-500 ${
         currentStatus === 'in' 
-          ? 'bg-white border-slate-300 shadow-slate-400/40' 
+          ? 'bg-white border-slate-350 shadow-slate-400/40' 
           : 'bg-[#0F172A] border-slate-800 shadow-black/80'
       }`}>
         
@@ -423,7 +366,7 @@ export default function App() {
           currentStatus === 'in' ? 'text-slate-500 bg-slate-50' : 'text-slate-400 bg-slate-950/40'
         }`}>
           <div>
-            {currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false })}
+            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
           </div>
           <div className="flex items-center gap-1.5">
             <Signal className="w-3.5 h-3.5" />
@@ -437,7 +380,7 @@ export default function App() {
           currentStatus === 'in' ? 'bg-slate-50/80 border-slate-200' : 'bg-[#1E293B]/60 border-slate-800'
         }`}>
           <div className="flex items-center gap-2">
-            <div className="bg-indigo-600 w-8 h-8 rounded-xl flex items-center justify-center text-white font-extrabold shadow-md shadow-indigo-600/30">
+            <div className="bg-indigo-600 w-8 h-8 rounded-xl flex items-center justify-center text-white font-extrabold shadow-md">
               A
             </div>
             <div>
@@ -449,17 +392,15 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Sync Alert Queue Count */}
-            {offlineQueueCount > 0 && (
+            {offlineQueue.length > 0 && (
               <button 
-                onClick={() => { syncQueue(); refreshDbStates(); }}
-                className="text-[9px] font-black bg-amber-500 hover:bg-amber-600 text-slate-950 px-2 py-0.5 rounded-full animate-bounce"
+                onClick={() => processOfflineQueue()}
+                className="text-[9px] font-black bg-amber-500 hover:bg-amber-650 text-slate-950 px-2 py-0.5 rounded-full animate-bounce"
               >
-                Sync ({offlineQueueCount})
+                Sync ({offlineQueue.length})
               </button>
             )}
 
-            {/* Offline/Online toggle */}
             <button
               onClick={() => setIsOnline(!isOnline)}
               className={`text-[9px] font-bold px-2 py-1 rounded-full border flex items-center gap-1 transition-all ${
@@ -493,29 +434,29 @@ export default function App() {
           </div>
         </header>
 
-        {/* Banners & Geolocation Alerts */}
+        {/* Missing Punch Banner Alert */}
         {showMissingPunchBanner && (
           <div className="bg-amber-500/10 border-b border-amber-500/20 p-2.5 text-amber-500 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 leading-tight">
             <Bell className="w-4 h-4 shrink-0 animate-bounce" />
-            <span>Missing Punch: Active for &gt;9 hrs! Clock out or edit timestamps.</span>
+            <span>Missing Punch: Active for &gt;9 hrs! Resolve error immediately.</span>
           </div>
         )}
 
         {showPreShiftReminder && (
           <div className="bg-indigo-500/10 border-b border-indigo-500/20 p-2.5 text-indigo-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 leading-tight">
             <Bell className="w-4 h-4 shrink-0 animate-pulse" />
-            <span>Shift starts in 15 mins! Clock in as you approach the building.</span>
+            <span>Shift starts in 15 mins! Open AeroPunchin as you approach building.</span>
           </div>
         )}
 
-        {/* Main Content Area */}
+        {/* Content Area */}
         <div className="flex-1 overflow-y-auto flex flex-col p-4 space-y-4">
           
-          {/* AUTHENTICATION VIEW */}
+          {/* AUTH SCREEN */}
           {!activeUser ? (
             <div className="flex-1 flex flex-col justify-center space-y-4">
               <div className={`p-5 rounded-3xl border transition-all ${
-                currentStatus === 'in' ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
+                currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
               }`}>
                 <div className="text-center mb-6">
                   <h3 className="text-lg font-black tracking-tight text-indigo-500">Welcome to AeroPunchin</h3>
@@ -534,7 +475,7 @@ export default function App() {
                         value={loginUsernameVal}
                         onChange={(e) => setLoginUsernameVal(e.target.value)}
                         className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-1 focus:ring-indigo-500 transition-colors ${
-                          currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                          currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                         }`}
                       />
                     </div>
@@ -548,7 +489,7 @@ export default function App() {
                         value={loginPasswordVal}
                         onChange={(e) => setLoginPasswordVal(e.target.value)}
                         className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-1 focus:ring-indigo-500 transition-colors ${
-                          currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                          currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                         }`}
                       />
                     </div>
@@ -563,7 +504,7 @@ export default function App() {
                       <button 
                         type="button" 
                         onClick={() => setAuthMode('register')} 
-                        className="text-indigo-400 hover:underline"
+                        className="text-indigo-400 hover:underline animate-pulse"
                       >
                         Register Profile
                       </button>
@@ -582,7 +523,7 @@ export default function App() {
                           value={regFirstName}
                           onChange={(e) => setRegFirstName(e.target.value)}
                           className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
-                            currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                           }`}
                         />
                       </div>
@@ -596,7 +537,7 @@ export default function App() {
                           value={regLastName}
                           onChange={(e) => setRegLastName(e.target.value)}
                           className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
-                            currentStatus === 'in' ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800 text-white'
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                           }`}
                         />
                       </div>
@@ -639,9 +580,11 @@ export default function App() {
                     </div>
 
                     {/* Live Preview of generateUsername */}
-                    {getUsernamePreview() && (
+                    {regFirstName.trim() && regLastName.trim() && (
                       <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 text-[10px] font-bold">
-                        Generated Username Preview: <span className="underline font-black">{getUsernamePreview()}</span>
+                        Username: <span className="underline font-black">
+                          {regLastName.trim().toLowerCase()[0] + regFirstName.trim().toLowerCase().substring(0, 4)}
+                        </span>
                       </div>
                     )}
 
@@ -665,7 +608,7 @@ export default function App() {
                 )}
 
                 {authError && (
-                  <div className="mt-3 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold flex items-center gap-1 animate-shake">
+                  <div className="mt-3 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{authError}</span>
                   </div>
@@ -674,12 +617,12 @@ export default function App() {
             </div>
           ) : (
             <>
-              {/* ATTENDANCE WORKFLOW (LAMP STAGE) */}
+              {/* ATTENDANCE PANEL (Visible to everyone) */}
               {activeTab === 'attendance' && (
                 <>
                   {/* Dashboard Profile Overview */}
                   <div className={`rounded-2xl p-3 border transition-all ${
-                    currentStatus === 'in' ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
+                    currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
                   }`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -707,7 +650,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Simulated HQ Presence switch */}
                     <div className="mt-2.5 pt-2.5 border-t border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between">
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                         <Sparkles className="w-3.5 h-3.5 text-amber-500" />
@@ -725,59 +667,14 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Interactive Lamp Stage */}
-                  <div className={`relative flex-1 rounded-3xl border flex flex-col items-center justify-center p-3 overflow-hidden min-h-[340px] transition-all duration-500 ${
+                  {/* Clean Scandinavian Lamp Stage (NO Labels, Clean minimalist interface) */}
+                  <div className={`relative flex-1 rounded-3xl border flex flex-col items-center justify-center p-3 overflow-hidden min-h-[380px] transition-all duration-500 ${
                     currentStatus === 'in' 
-                      ? 'bg-radial from-amber-50/40 via-white to-slate-50 border-slate-200' 
+                      ? 'bg-radial from-amber-50/45 via-white to-slate-50 border-slate-200' 
                       : 'bg-gradient-to-b from-[#0F172A] to-[#020617] border-slate-800'
                   }`}>
-                    {/* Status labels */}
-                    <div className="absolute top-4 left-4 text-left pointer-events-none z-10 select-none">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                        Shift Status
-                      </p>
-                      <p className={`text-xs font-black uppercase mt-0.5 transition-all flex items-center gap-1 ${
-                        currentStatus === 'in' ? 'text-emerald-500 animate-pulse' : 'text-slate-400'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${currentStatus === 'in' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                        {currentStatus === 'in' ? 'Active' : 'Off-Duty'}
-                      </p>
-                    </div>
-
-                    <div className="absolute top-4 right-4 text-right pointer-events-none z-10 select-none">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                        Office Light On/Off
-                      </p>
-                      <p className={`text-xs font-black uppercase mt-0.5 transition-colors ${
-                        currentStatus === 'in' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
-                      }`}>
-                        {currentStatus === 'in' ? 'ON' : 'OFF'}
-                      </p>
-                    </div>
-
-                    <div className="absolute bottom-4 left-4 text-left pointer-events-none z-10 select-none">
-                      <p className={`text-[10px] font-black uppercase mt-0.5 ${
-                        currentStatus === 'in' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
-                      }`}>
-                        HQ Geofence : {geofenceRadius}M perimeter
-                      </p>
-                    </div>
-
-                    <div className="absolute bottom-4 right-4 text-right pointer-events-none z-10">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                        Cord Action
-                      </p>
-                      <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all duration-300 ${
-                        currentStatus === 'in' 
-                          ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/40 dark:text-indigo-300' 
-                          : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500 dark:text-yellow-400 animate-pulse'
-                      }`}>
-                        {currentStatus === 'in' ? 'CLICK TO CLOCK-OUT' : 'CLICK TO CLOCK-IN'}
-                      </span>
-                    </div>
-
-                    {/* Lamp Component */}
-                    <div className="w-full h-[300px] flex items-center justify-center">
+                    {/* Standing Floor Lamp - Single visual control component */}
+                    <div className="w-full h-[330px] flex items-center justify-center">
                       <SideLamp 
                         lampOn={currentStatus === 'in'} 
                         onToggle={handleCheckInOut} 
@@ -785,66 +682,14 @@ export default function App() {
                       />
                     </div>
 
-                    {/* Logging Overlay */}
                     {isLogging && (
                       <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-30">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mb-2" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Verifying Geofence...</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Triangulating location...</span>
                       </div>
                     )}
                   </div>
 
-                  {/* BREAK TRACKING PANEL (Only active when punched in) */}
-                  {currentStatus === 'in' && (
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                      currentStatus === 'in' ? 'bg-slate-50/50 border-slate-200' : 'bg-[#1E293B]/70 border-slate-800'
-                    }`}>
-                      <div className="flex items-center justify-between text-[9px] font-black text-slate-400 border-b border-dashed border-slate-200 dark:border-slate-800 pb-2 mb-3">
-                        <span>BREAK STATUS PANEL</span>
-                        <span className={currentBreak ? "text-amber-500 font-black animate-pulse" : "text-emerald-500 font-black"}>
-                          {currentBreak ? `ON ${currentBreak.type.toUpperCase()} BREAK` : "WORKING"}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <button
-                          onClick={() => handleToggleBreakAction('lunch')}
-                          className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
-                            currentBreak?.type === 'lunch'
-                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
-                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
-                          }`}
-                        >
-                          <Utensils className="w-3.5 h-3.5" />
-                          <span>Lunch</span>
-                        </button>
-                        <button
-                          onClick={() => handleToggleBreakAction('coffee')}
-                          className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
-                            currentBreak?.type === 'coffee'
-                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
-                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
-                          }`}
-                        >
-                          <Coffee className="w-3.5 h-3.5" />
-                          <span>Coffee</span>
-                        </button>
-                        <button
-                          onClick={() => handleToggleBreakAction('personal')}
-                          className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
-                            currentBreak?.type === 'personal'
-                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
-                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
-                          }`}
-                        >
-                          <User className="w-3.5 h-3.5" />
-                          <span>Personal</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Feedback alerts */}
                   {error && (
                     <div className="flex items-start gap-2 p-3 bg-red-500/10 text-red-500 text-[11px] rounded-xl border border-red-500/20 text-left">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -861,106 +706,114 @@ export default function App() {
                 </>
               )}
 
-              {/* LOGS ACTIVITY VIEW */}
+              {/* LOGS ACTIVITY VIEW (Visible to everyone, enhanced styling) */}
               {activeTab === 'logs' && (
                 <div className="flex-1 flex flex-col min-h-0 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Company Log Feed</span>
-                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block px-0.5">Workforce Logs Feed</span>
 
-                  <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[500px]">
-                    {records.map(rec => (
-                      <div 
-                        key={rec.id}
-                        className={`p-3 rounded-xl border flex flex-col gap-1.5 text-xs transition-colors ${
-                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-[#1E293B]/40 border-slate-800'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider ${
-                            currentStatus === 'in' ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-950/50 text-indigo-400 border border-indigo-900/40'
-                          }`}>
-                            {rec.name}
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                            rec.type === 'in' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-                          }`}>
-                            {rec.type === 'in' ? 'Check In' : 'Check Out'}
-                          </span>
-                        </div>
-
-                        {/* Date display & Admin timestamp editor */}
-                        {activeUser.role === 'Admin' || activeUser.role === 'Manager' ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-400">Timestamp:</span>
-                            <input
-                              type="datetime-local"
-                              defaultValue={new Date(rec.timestamp - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
-                              onChange={(e) => handleEditRecordTimestamp(rec.id, e.target.value)}
-                              className={`p-1 rounded text-[10px] font-mono border ${
-                                currentStatus === 'in' ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-200'
-                              }`}
-                            />
+                  <div className="flex-1 overflow-y-auto space-y-3 max-h-[500px]">
+                    {records.map(rec => {
+                      const hasAddress = rec.address && rec.address !== '' && !rec.address.startsWith('HQ Office Area') && !rec.address.startsWith('Office Geofence');
+                      const showCoords = !hasAddress; // Show coordinates ONLY once, and ONLY when no clean address is present
+                      
+                      return (
+                        <div 
+                          key={rec.id}
+                          className={`p-3.5 rounded-2xl border flex flex-col gap-2 transition-all duration-300 text-xs shadow-sm ${
+                            currentStatus === 'in' 
+                              ? 'bg-slate-50 border-slate-200 text-slate-800 shadow-slate-200/50 hover:bg-slate-100' 
+                              : 'bg-slate-900/60 border-slate-800 text-slate-200 hover:bg-slate-850/60'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className={`px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wider ${
+                              currentStatus === 'in' 
+                                ? 'bg-indigo-50 text-indigo-700' 
+                                : 'bg-indigo-950/50 text-indigo-400 border border-indigo-900/40'
+                            }`}>
+                              {rec.name}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                              rec.type === 'in' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                            }`}>
+                              {rec.type === 'in' ? 'Clock In' : 'Clock Out'}
+                            </span>
                           </div>
-                        ) : (
-                          <p className={`font-semibold ${currentStatus === 'in' ? 'text-slate-700' : 'text-slate-200'}`}>
-                            {new Date(rec.timestamp).toLocaleString()}
-                          </p>
-                        )}
 
-                        <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-800">
-                          <span className="font-mono">{rec.latitude.toFixed(4)}, {rec.longitude.toFixed(4)}</span>
-                          <span className={rec.isRemote ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold'}>
-                            {rec.isRemote ? 'Remote' : `${rec.distanceFromOffice}m from HQ`}
-                          </span>
+                          <div className="text-[11px] font-bold border-b border-dashed border-slate-200 dark:border-slate-800/80 pb-1.5 flex justify-between items-center">
+                            <span className="text-slate-400">Date: {formatDetailedDate(rec.timestamp)}</span>
+                            <span className="text-indigo-400">{format12HourTime(rec.timestamp)}</span>
+                          </div>
+
+                          <div className="flex flex-col gap-1 text-[10px] text-slate-400">
+                            {showCoords ? (
+                              <p className="font-mono bg-slate-950/20 p-1.5 rounded-lg border border-slate-850 text-center">
+                                Coords: {rec.latitude.toFixed(5)}, {rec.longitude.toFixed(5)}
+                              </p>
+                            ) : (
+                              <p className="leading-normal">{rec.address}</p>
+                            )}
+
+                            {rec.distanceFromOffice !== undefined && (
+                              <span className={`font-black text-[9px] uppercase mt-1 self-end ${rec.isRemote ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                {rec.isRemote ? 'Remote workplace' : `Verified inside geofence (${rec.distanceFromOffice}m)`}
+                              </span>
+                            )}
+                          </div>
                         </div>
-
-                        {rec.address && <p className="text-[10px] text-slate-400 leading-normal">{rec.address}</p>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* HOURS TAB (Calculates regular and overtime) */}
+              {/* HOURS TAB (Improved color grading, regular hours text visible) */}
               {activeTab === 'hours' && (
                 <div className="flex-1 flex flex-col min-h-0 space-y-4">
                   <div>
                     <h4 className={`text-xs font-black uppercase tracking-wider ${currentStatus === 'in' ? 'text-slate-700' : 'text-slate-200'}`}>
-                      Shift Duration & Overtime Calculations
+                      Shift Performance & Overtime
                     </h4>
-                    <p className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">8h Standard Shift Length limit</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3.5 rounded-xl bg-indigo-500/5 border border-indigo-500/10 text-center">
+                    {/* Regular Hours card with visible colors based on theme */}
+                    <div className={`p-4 rounded-2xl border text-center shadow-md transition-all ${
+                      currentStatus === 'in' 
+                        ? 'bg-slate-50 border-slate-200 text-slate-800 shadow-slate-200/50' 
+                        : 'bg-indigo-500/5 border-indigo-500/10 text-slate-200'
+                    }`}>
                       <span className="text-[9px] font-black uppercase text-indigo-400 block mb-1">Regular Hours</span>
-                      <span className="text-lg font-black text-white">
+                      <span className={`text-xl font-black ${currentStatus === 'in' ? 'text-slate-800' : 'text-white'}`}>
                         {(workSummary.regularMs / 3600000).toFixed(2)}h
                       </span>
                     </div>
-                    <div className="p-3.5 rounded-xl bg-amber-500/5 border border-amber-500/10 text-center animate-pulse">
+
+                    {/* Overtime card */}
+                    <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/15 text-center shadow-md animate-pulse">
                       <span className="text-[9px] font-black uppercase text-amber-500 block mb-1">Overtime Hours</span>
-                      <span className="text-lg font-black text-amber-500">
+                      <span className="text-xl font-black text-amber-500">
                         {(workSummary.overtimeMs / 3600000).toFixed(2)}h
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[350px]">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Daily Breakdown</span>
+                  <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[380px]">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block px-0.5">Shift History Logs</span>
                     {workSummary.sessions.map((sess, index) => (
                       <div 
                         key={index}
-                        className={`p-3 rounded-xl border flex flex-col gap-1 text-xs ${
-                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 text-xs shadow-sm hover:scale-[0.99] transition-transform ${
+                          currentStatus === 'in' 
+                            ? 'bg-slate-50 border-slate-200 text-slate-850' 
+                            : 'bg-slate-900/60 border-slate-850 text-slate-200'
                         }`}
                       >
                         <div className="flex justify-between items-center font-bold">
                           <span>{sess.date}</span>
-                          <span>Total: {(sess.duration / 3600000).toFixed(2)}h</span>
+                          <span className="text-indigo-400 font-black">Total: {(sess.duration / 3600000).toFixed(2)}h</span>
                         </div>
-                        <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
+                        <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-800">
                           <span>Regular: {(sess.regular / 3600000).toFixed(2)}h</span>
                           <span className={sess.overtime > 0 ? "text-amber-500 font-bold" : ""}>
                             Overtime: {(sess.overtime / 3600000).toFixed(2)}h
@@ -972,99 +825,88 @@ export default function App() {
                 </div>
               )}
 
-              {/* LEAVE PORTAL */}
+              {/* LEAVES REQUEST TAB (Redesigned pickers, error handling) */}
               {activeTab === 'leaves' && (
                 <div className="flex-1 flex flex-col min-h-0 space-y-4">
                   <div>
                     <h4 className={`text-xs font-black uppercase tracking-wider ${currentStatus === 'in' ? 'text-slate-700' : 'text-slate-200'}`}>
                       Leave Requests Hub
                     </h4>
-                    <p className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">Submit & monitor leaves requests</p>
+                    <p className="text-[9px] text-slate-400 uppercase font-bold mt-0.5">File leave request parameters</p>
                   </div>
 
-                  {/* Submit request form */}
-                  <form onSubmit={handleLeaveSubmit} className="p-3.5 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 space-y-3">
-                    <span className="text-[9px] font-black uppercase text-indigo-400 block">File Leave Request</span>
+                  <form onSubmit={handleLeaveSubmit} className="p-4 rounded-3xl border border-indigo-500/20 bg-indigo-500/5 space-y-3.5 shadow-sm">
+                    <span className="text-[10px] font-black uppercase text-indigo-400 block">Submit Leave Request</span>
+                    
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Start Date</label>
+                        <label className="block text-[8px] uppercase text-slate-400 font-black mb-0.5">Start Date</label>
                         <input
                           type="date"
                           value={leaveStart}
                           onChange={(e) => setLeaveStart(e.target.value)}
-                          className={`w-full p-2 rounded text-xs ${
-                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-800 text-white'
+                          className={`w-full p-2 rounded-xl text-xs font-bold border focus:outline-none ${
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                           }`}
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">End Date</label>
+                        <label className="block text-[8px] uppercase text-slate-400 font-black mb-0.5">End Date</label>
                         <input
                           type="date"
                           value={leaveEnd}
+                          placeholder="Select End Date" // default placeholder
                           onChange={(e) => setLeaveEnd(e.target.value)}
-                          className={`w-full p-2 rounded text-xs ${
-                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-800 text-white'
+                          className={`w-full p-2 rounded-xl text-xs font-bold border focus:outline-none ${
+                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                           }`}
                         />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Leave Type</label>
-                        <select
-                          value={leaveType}
-                          onChange={(e) => setLeaveType(e.target.value as any)}
-                          className={`w-full p-2 rounded text-xs ${
-                            currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-850' : 'bg-slate-950 border-slate-800 text-slate-200'
-                          }`}
-                        >
-                          <option value="annual">Annual</option>
-                          <option value="sick">Sick</option>
-                          <option value="casual">Casual</option>
-                          <option value="other">Other</option>
-                        </select>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Reason Description</label>
+                      <label className="block text-[8px] uppercase text-slate-400 font-black mb-0.5">Reason Description</label>
                       <input
                         type="text"
-                        placeholder="e.g. Family function, rest"
+                        placeholder="Detail reason for your absence request..."
                         value={leaveReason}
                         onChange={(e) => setLeaveReason(e.target.value)}
-                        className={`w-full p-2 rounded text-xs ${
-                          currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-850' : 'bg-slate-950 border-slate-800 text-white'
+                        className={`w-full p-2.5 rounded-xl text-xs font-bold border focus:outline-none ${
+                          currentStatus === 'in' ? 'bg-white border-slate-250 text-slate-800' : 'bg-slate-950 border-slate-850 text-white'
                         }`}
                       />
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors"
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
                     >
                       Submit Leave Request
                     </button>
                   </form>
 
-                  {/* Users leaves list */}
+                  {leaveError && (
+                    <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold flex items-center gap-1.5 animate-shake">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{leaveError}</span>
+                    </div>
+                  )}
+
                   <div className="flex-1 overflow-y-auto space-y-2 max-h-[220px]">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">My Submitted Leaves</span>
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block px-0.5">My Leave Log</span>
                     {leaves.filter(l => l.userId === activeUser.id).map(l => (
                       <div 
                         key={l.id}
-                        className={`p-2.5 rounded-xl border flex justify-between items-center text-xs ${
-                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        className={`p-3 rounded-2xl border flex justify-between items-center text-xs shadow-sm ${
+                          currentStatus === 'in' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-850'
                         }`}
                       >
                         <div>
-                          <span className="font-bold uppercase text-[9px] text-indigo-400">{l.type} Leave</span>
-                          <p className="text-[8px] text-slate-400 mt-0.5">Dates: {l.startDate} to {l.endDate}</p>
-                          <p className="italic text-[9px] text-slate-300">"{l.reason}"</p>
+                          <span className="font-black uppercase text-[9px] text-indigo-400 block">Leave Application</span>
+                          <p className="text-[8px] text-slate-400 mt-0.5 font-bold">Dates: {l.startDate} to {l.endDate}</p>
+                          <p className="italic text-[10px] text-slate-200 mt-1">"{l.reason}"</p>
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                        <span className={`px-2.5 py-0.5 rounded-lg text-[8px] font-black uppercase ${
                           l.status === 'approved' 
                             ? 'bg-emerald-500/10 text-emerald-400' 
                             : l.status === 'rejected'
@@ -1079,55 +921,59 @@ export default function App() {
                 </div>
               )}
 
-              {/* ADMIN SETTINGS VIEW */}
+              {/* ADMIN SETTINGS VIEW (Only visible to Admin or Manager) */}
               {activeTab === 'admin' && (
                 <AdminPanel
                   lampOn={currentStatus === 'in'}
-                  officeName={officeName}
-                  officeLat={officeLat}
-                  officeLon={officeLon}
-                  geofenceRadius={geofenceRadius}
+                  officeName={officeSettings.name}
+                  officeLat={officeSettings.latitude}
+                  officeLon={officeSettings.longitude}
+                  geofenceRadius={officeSettings.geofenceRadius}
+                  autoPunchOutTime={officeSettings.autoPunchOutTime}
+                  workingDays={officeSettings.workingDays}
+                  onSaveSettings={(name, lat, lon, radius, autoOut, wrkDays) => {
+                    updateOfficeSettings({
+                      name,
+                      latitude: lat,
+                      longitude: lon,
+                      geofenceRadius: radius,
+                      autoPunchOutTime: autoOut,
+                      workingDays: wrkDays
+                    });
+                    setSuccessMsg('Office configurations updated successfully.');
+                    setTimeout(() => setSuccessMsg(null), 3000);
+                  }}
+                  activeUserId={activeUser.id}
                   users={users}
                   attendanceRecords={records}
                   breaks={breaks}
                   leaves={leaves}
                   shifts={shifts}
-                  onSaveSettings={(name, lat, lon, radius) => {
-                    setOfficeName(name);
-                    setOfficeLat(lat);
-                    setOfficeLon(lon);
-                    setGeofenceRadius(radius);
-                    localStorage.setItem('officeLat', lat.toString());
-                    localStorage.setItem('officeLon', lon.toString());
-                    localStorage.setItem('officeName', name);
-                    localStorage.setItem('geofenceRadius', radius.toString());
-                    refreshDbStates();
-                  }}
                   onUpdateUserRole={(userId, role) => {
-                    updateUserRole(userId, role);
-                    refreshDbStates();
+                    changeUserRole(userId, role);
                   }}
                   onUpdateUserShift={(userId, shiftId) => {
-                    updateUserShift(userId, shiftId);
-                    refreshDbStates();
+                    changeUserShift(userId, shiftId);
                   }}
                   onCreateShift={(name, start, end, grace) => {
-                    addShift(name, start, end, grace);
-                    refreshDbStates();
+                    createNewShift(name, start, end, grace);
                   }}
                   onApproveRejectLeave={(leaveId, status) => {
-                    updateLeaveStatus(leaveId, status, activeUser.id);
-                    refreshDbStates();
+                    updateLeaveStatus(leaveId, status);
                   }}
+                  onAdminCreateUser={(first, last, role, shift) => {
+                    return adminCreateUser(first, last, role, shift);
+                  }}
+                  onCaptureCoordinates={handleCaptureCoordinatesCallback}
                 />
               )}
             </>
           )}
         </div>
 
-        {/* Smartphone Navigation Bar */}
+        {/* Dynamic Navigation Bar (Leaves and Admin dynamically shown/hidden) */}
         {activeUser && (
-          <nav className={`border-t flex justify-around py-3 px-1 shrink-0 transition-all duration-500 ${
+          <nav className={`border-t flex justify-around py-3 px-1 shrink-0 transition-all duration-500 select-none ${
             currentStatus === 'in' ? 'bg-slate-50 border-slate-250' : 'bg-[#0B0F19] border-slate-850'
           }`}>
             <button

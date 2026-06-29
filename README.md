@@ -8,11 +8,12 @@ AeroPunchin is a premium, mobile-first shift attendance and productivity managem
 
 AeroPunchin operates as a hybrid client-side web application capable of running entirely offline:
 1. **Interactive UI Thread**: Tapping the cord of the floor lamp toggles the user's shift. The ambient lighting system cascades dynamically based on state.
-2. **Local DB Engine (`src/db/localDb.ts`)**: Simulates a relational SQL database utilizing `localStorage` schemas. Handles auto-username generation, shift timing presets, and break/leave transactions.
-3. **Offline Sync Queue**: Operations executed while offline are queued in memory. On connection recovery, they are bulk synced and saved to the master database.
-4. **Role-Based Access Control**:
+2. **Local Storage Cache (`src/db/storage.ts`)**: Simulates a relational SQLite database utilizing `localStorage` schemas. Handles auto-username generation, shift timing presets, and break/leave transactions.
+3. **Zustand Slice Pattern Store (`src/store/slices/`)**: State is split into granular slices (auth, settings, leaves, attendance, offline) to limit file sizes to a strict 300 lines of code limit.
+4. **Offline Sync Queue**: Operations executed while offline are queued in memory. On connection recovery, they are bulk synced and saved to the master database via Cloudflare Pages functions proxy.
+5. **Role-Based Access Control**:
    - **Sales**: Can clock-in/out from anywhere, bypassing the geofence validations.
-   - **Admin/Manager**: Accesses dashboard subtabs (Live Roster, Shift Presets, Tardiness Flagging, Leave Requests, and CSV/PDF Data Exporters) and can edit attendance timestamps.
+   - **Admin/Manager**: Accesses dashboard grid cards (Users, Shifts Configs, HQ & Geofencing, Tardiness Visuals) and can reset employee passwords.
    - **HR/Developer/User**: Constrained by the active office geofence (100m default), accesses hours summary, break status toggles, and leave request filing.
 
 ---
@@ -25,6 +26,7 @@ All documentation and structural schemas reside in the `docs/` folder:
 - **[GUIDE.md](./docs/GUIDE.md)**: Onboarding setup manual from zero.
 - **[HOW_TO.md](./docs/HOW_TO.md)**: Actionable recipes for compilation, cleaning, and database hosting.
 - **[CHANGELOG.md](./docs/CHANGELOG.md)**: Chronological list of version releases and updates.
+- **[AGENT.md](./docs/AGENT.md)**: Design rules and filesystem policies.
 
 ---
 
@@ -47,14 +49,13 @@ Ensure you have [Node.js](https://nodejs.org/) (v18.0.0+) installed on your mach
    ```bash
    cp .env.example .env
    ```
-   *Note: If `LOCATIONIQ_TOKEN` is missing, the application defaults to safe fallback simulated coordinates.*
 
-### Run Locally
-Launch the Vite development environment:
+### Run Locally (Wrangler + Vite Proxy)
+Launch the integrated server dev environment:
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Wrangler will launch on port 3000 and proxy Vite HMR server on port 3001. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 

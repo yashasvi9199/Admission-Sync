@@ -100,13 +100,13 @@ SELECT * FROM users WHERE shift_id IS NULL;
 ### B. Testing Attendance Logs & Geofencing
 ```sql
 -- List attendance history sorted from newest to oldest
-SELECT id, name, type, datetime(timestamp/1000, 'unixepoch', 'localtime') AS punch_time, address FROM attendance_records ORDER BY timestamp DESC;
+SELECT ar.id, u.first_name || ' ' || u.last_name AS name, ar.type, datetime(ar.timestamp/1000, 'unixepoch', 'localtime') AS punch_time, ar.address FROM attendance_records ar JOIN users u ON ar.user_id = u.id ORDER BY ar.timestamp DESC;
 
 -- Identify all remote clock-ins (punched outside the office perimeter)
 SELECT * FROM attendance_records WHERE is_remote = 1;
 
 -- Check maximum distance deviations from the HQ office
-SELECT name, distance_from_office, address FROM attendance_records WHERE distance_from_office > 100 ORDER BY distance_from_office DESC;
+SELECT u.first_name || ' ' || u.last_name AS name, ar.distance_from_office, ar.address FROM attendance_records ar JOIN users u ON ar.user_id = u.id WHERE ar.distance_from_office > 100 ORDER BY ar.distance_from_office DESC;
 ```
 
 ### C. Testing Break Status

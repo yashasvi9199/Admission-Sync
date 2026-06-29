@@ -87,7 +87,7 @@ export default function AdminTab(props: AdminTabProps) {
         {/* Users Card */}
         <button
           onClick={() => setSubView('users')}
-          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer hover:scale-[1.02] ${
+          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer ${
             props.lampOn 
               ? 'bg-slate-50 border-slate-250 text-slate-800 hover:bg-slate-100 shadow-slate-200/50' 
               : 'bg-slate-900/60 border-slate-850 text-white hover:bg-slate-850/60'
@@ -105,7 +105,7 @@ export default function AdminTab(props: AdminTabProps) {
         {/* Shifts Card */}
         <button
           onClick={() => setSubView('shifts')}
-          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer hover:scale-[1.02] ${
+          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer ${
             props.lampOn 
               ? 'bg-slate-50 border-slate-250 text-slate-800 hover:bg-slate-100 shadow-slate-200/50' 
               : 'bg-slate-900/60 border-slate-850 text-white hover:bg-slate-850/60'
@@ -123,7 +123,7 @@ export default function AdminTab(props: AdminTabProps) {
         {/* Office Settings Card */}
         <button
           onClick={() => setSubView('office')}
-          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer hover:scale-[1.02] ${
+          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer ${
             props.lampOn 
               ? 'bg-slate-50 border-slate-250 text-slate-800 hover:bg-slate-100 shadow-slate-200/50' 
               : 'bg-slate-900/60 border-slate-850 text-white hover:bg-slate-850/60'
@@ -141,7 +141,7 @@ export default function AdminTab(props: AdminTabProps) {
         {/* Tardiness Card */}
         <button
           onClick={() => setSubView('tardiness')}
-          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer hover:scale-[1.02] ${
+          className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer ${
             props.lampOn 
               ? 'bg-slate-50 border-slate-250 text-slate-800 hover:bg-slate-100 shadow-slate-200/50' 
               : 'bg-slate-900/60 border-slate-850 text-white hover:bg-slate-850/60'

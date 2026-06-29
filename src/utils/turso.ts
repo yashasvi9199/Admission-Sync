@@ -28,8 +28,20 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
             stmt: {
               sql,
               args: args.map(arg => {
-                if (typeof arg === 'boolean') return arg ? 1 : 0;
-                return arg;
+                if (arg === null || arg === undefined) {
+                  return { type: 'null' };
+                }
+                if (typeof arg === 'boolean') {
+                  return { type: 'integer', value: arg ? '1' : '0' };
+                }
+                if (typeof arg === 'number') {
+                  if (Number.isInteger(arg)) {
+                    return { type: 'integer', value: arg.toString() };
+                  } else {
+                    return { type: 'float', value: arg };
+                  }
+                }
+                return { type: 'text', value: arg.toString() };
               })
             }
           },

@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { AeroPunchinState } from '../useStore';
-import { User } from '../../types';
+import { User } from '@/src/types';
 import { getStoredUsers, getStoredShifts, generateUsername } from '../../db/storage';
 
 export interface AuthSlice {

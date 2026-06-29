@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { OfficeSettings } from '../../types';
+import { OfficeSettings } from '@/src/types';
 import { Sliders, MapPin } from 'lucide-react';
 
 interface OfficeSettingsSubTabProps {

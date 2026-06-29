@@ -53,11 +53,58 @@ CREATE TABLE IF NOT EXISTS breaks (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Create Leave Requests table
+-- -- Create Leave Requests table
+-- CREATE TABLE IF NOT EXISTS leave_requests (
+--     id TEXT PRIMARY KEY,
+--     user_id TEXT REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+--     type TEXT CHECK (type IN ('annual', 'sick', 'casual', 'other')) NOT NULL,
+--     start_date TEXT NOT NULL, -- ISO Date "YYYY-MM-DD"
+--     end_date TEXT NOT NULL, -- ISO Date "YYYY-MM-DD"
+--     reason TEXT NOT NULL,
+--     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')) NOT NULL,
+--     approved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+--     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+-- );
+
+-- Indexes for performance optimizations
+CREATE INDEX IF NOT EXISTS idx_attendance_user ON attendance_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_breaks_user ON breaks(user_id);
+CREATE INDEX IF NOT EXISTS idx_leaves_user ON leave_requests(user_id);
+
+-- -- Views for Manager Reporting
+-- DROP VIEW IF EXISTS view_live_roster;
+-- CREATE VIEW view_live_roster AS
+-- SELECT 
+--     u.id as user_id,
+--     u.username,
+--     u.first_name,
+--     u.last_name,
+--     u.role,
+--     (SELECT ar.type FROM attendance_records ar WHERE ar.user_id = u.id ORDER BY ar.timestamp DESC LIMIT 1) as last_action,
+--     (SELECT ar.timestamp FROM attendance_records ar WHERE ar.user_id = u.id ORDER BY ar.timestamp DESC LIMIT 1) as last_action_time,
+--     (SELECT ar.is_remote FROM attendance_records ar WHERE ar.user_id = u.id ORDER BY ar.timestamp DESC LIMIT 1) as is_remote,
+--     (SELECT b.type FROM breaks b WHERE b.user_id = u.id AND b.end_time IS NULL ORDER BY b.start_time DESC LIMIT 1) as active_break
+-- FROM users u;
+
+-- Seed Data for Shifts
+INSERT OR IGNORE INTO shifts (id, name, start_time, end_time, grace_period_mins)
+VALUES 
+('shift-morning', 'Morning Shift', '09:00', '17:00', 15),
+('shift-night', 'Night Shift', '22:00', '06:00', 15);
+
+-- ============================================================
+-- Date: 2026-06-29
+-- Time: 17:00 IST
+-- Feature: aero-punchin-turso-upgrade
+-- Type: SUPERSEDES
+-- Notes: Relocate tables to Turso, add office_settings table, and remove leave types
+-- ============================================================
+
+-- Create Upgraded Leave Requests table (without type constraints)
 CREATE TABLE IF NOT EXISTS leave_requests (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-    type TEXT CHECK (type IN ('annual', 'sick', 'casual', 'other')) NOT NULL,
+    type TEXT DEFAULT 'other' NOT NULL,
     start_date TEXT NOT NULL, -- ISO Date "YYYY-MM-DD"
     end_date TEXT NOT NULL, -- ISO Date "YYYY-MM-DD"
     reason TEXT NOT NULL,
@@ -66,12 +113,19 @@ CREATE TABLE IF NOT EXISTS leave_requests (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Indexes for performance optimizations
-CREATE INDEX IF NOT EXISTS idx_attendance_user ON attendance_records(user_id);
-CREATE INDEX IF NOT EXISTS idx_breaks_user ON breaks(user_id);
-CREATE INDEX IF NOT EXISTS idx_leaves_user ON leave_requests(user_id);
+-- Create Office Settings table
+CREATE TABLE IF NOT EXISTS office_settings (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    geofence_radius REAL NOT NULL,
+    auto_punch_out_time TEXT DEFAULT '00:00' NOT NULL, -- "HH:MM" e.g., "00:00"
+    working_days TEXT DEFAULT 'Mon,Tue,Wed,Thu,Fri' NOT NULL, -- Comma-separated e.g., "Mon,Tue,Wed,Thu,Fri"
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
 
--- Views for Manager Reporting
+-- Upgraded View for Manager Reporting
 DROP VIEW IF EXISTS view_live_roster;
 CREATE VIEW view_live_roster AS
 SELECT 
@@ -86,8 +140,7 @@ SELECT
     (SELECT b.type FROM breaks b WHERE b.user_id = u.id AND b.end_time IS NULL ORDER BY b.start_time DESC LIMIT 1) as active_break
 FROM users u;
 
--- Seed Data for Shifts
-INSERT OR IGNORE INTO shifts (id, name, start_time, end_time, grace_period_mins)
-VALUES 
-('shift-morning', 'Morning Shift', '09:00', '17:00', 15),
-('shift-night', 'Night Shift', '22:00', '06:00', 15);
+-- Seed Data for Office Settings (Default New York HQ)
+INSERT OR IGNORE INTO office_settings (id, name, latitude, longitude, geofence_radius, auto_punch_out_time, working_days)
+VALUES
+('default-office', 'New York HQ', 40.712800, -74.006000, 100.0, '00:00', 'Mon,Tue,Wed,Thu,Fri');

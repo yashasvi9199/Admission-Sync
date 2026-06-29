@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shift } from '../../types';
+import { Shift } from '@/src/types';
 import { CalendarRange, Trash2, Edit2, Check, X } from 'lucide-react';
 
 interface ShiftsSubTabProps {

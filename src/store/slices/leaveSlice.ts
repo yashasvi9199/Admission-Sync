@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { AeroPunchinState } from '../useStore';
-import { LeaveRequest } from '../../types';
+import { LeaveRequest } from '@/src/types';
 
 export interface LeaveSlice {
   leaves: LeaveRequest[];

@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "apk": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease && cd .. && echo \"✅ Release APK → android/app/build/outputs/apk/release/\"",
-    "debug-apk": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug && cd .. && echo \"✅ Debug APK → android/app/build/outputs/apk/debug/\""
+    "apk": "npm run build && npx cap sync android && chmod +x android/gradlew && cd android && ./gradlew assembleRelease && cd .. && echo \"✅ Release APK → android/app/build/outputs/apk/release/\"",
+    "debug-apk": "npm run build && npx cap sync android && chmod +x android/gradlew && cd android && ./gradlew assembleDebug && cd .. && echo \"✅ Debug APK → android/app/build/outputs/apk/debug/\""
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",

@@ -18,7 +18,7 @@ Follow these steps to initialize the project locally:
    ```bash
    npm install
    ```
-3. Initialize the development environment:
+3. Initialize the development environment (this starts wrangler local dev server and Vite concurrently):
    ```bash
    npm run dev
    ```
@@ -26,9 +26,13 @@ Follow these steps to initialize the project locally:
 ## 4. Environment Configuration
 Create a `.env` file in the project root:
 ```env
-LOCATIONIQ_TOKEN="your_location_iq_token_here"
+LOCATIONIQ_TOKEN="pk.dc7cb6bdb77498f63190516b317f9fd3"
 ```
 *Note: A mock/simulated GPS coordinates mode is enabled in the UI for local sandboxed testing without real tokens.*
+
+For wrangler database variables, configure them in wrangler.toml or set them in the environment:
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
 
 ## 5. Turso Database Setup
 Deploying to a remote Turso DB:
@@ -46,32 +50,38 @@ Deploying to a remote Turso DB:
    ```
 
 ## 6. Running Project Locally
-To start the local Vite development server:
+To start local development with Wrangler Pages functions and Vite proxying:
 ```bash
 npm run dev
 ```
-The application will launch at [http://localhost:3000](http://localhost:3000).
+The proxy dev server will launch at [http://localhost:3000](http://localhost:3000).
 
 ## 7. Account Creation Flow
-1. Select the **Register** link on the login screen.
+1. Select the **Register Profile** link on the login screen.
 2. Enter your **First Name** and **Last Name**.
 3. Select your core role (User, Sales, HR, etc.).
-4. The system automatically creates a username: `first letter of second name + first 4 letters of first name` (e.g. `djohn` for John Doe).
-5. The very first user created registers as an **Admin** automatically. All subsequent profiles register as standard **User** profiles.
+4. Assign a password that meets the checklist constraints:
+   - At least 4 letters
+   - At least 1 number
+   - At least 1 special character
+5. Re-enter the password in the **Confirm Password** field. If there is a mismatch, a red cross `×` indicator appears.
+6. The system automatically creates a username: `first letter of second name + first 4 letters of first name` (e.g. `djohn` for John Doe).
+7. The very first user created registers as an **Admin** automatically. All subsequent profiles register as standard **User** profiles.
 
 ## 8. Common Tasks & Operations
 - **Log Attendance**: Pull or click the cord in the lamp stage to clock in or out.
 - **Track Breaks**: While clocked in, choose Lunch, Coffee, or Personal break. Toggle again to end the break.
-- **File Leaves**: Navigate to the **Leaves** tab, fill in the date range and reason, and submit.
-- **Approve Leaves**: Log in as Admin, navigate to **Admin settings > Leaves**, and select Approve or Reject.
-- **Export Data**: Log in as Admin, select Roster tab, and click **Export CSV** or **Export PDF/Print**.
+- **File Leaves**: Navigate to the **Leaves** tab, select dates, description, and submit.
+- **Approve Leaves**: Log in as Admin, navigate to **Admin > Users & Profiles**, and inspect or approve/reject leave requests.
+- **Export Data**: Log in as Admin, navigate to Users subtab, and click **CSV** or **PDF** reports.
+- **Reset Roster Passwords**: Log in as Admin, navigate to Admin > Users, click "Reset Account Password" on any employee card, assign a new password, and click Confirm.
 
 ## 9. Mobile App Integration
 This project is configured with Capacitor.
 - For Android build compilation:
   ```bash
   npx cap sync
-  npx cap open android
+  | npx cap open android
   ```
 
 ## 10. Troubleshooting & Syncing
@@ -88,13 +98,10 @@ Then, execute any of the following queries:
 ### A. Testing User Privileges & Roster Profiles
 ```sql
 -- Retrieve all registered employees
-SELECT id, username, first_name, last_name, role, shift_id FROM users;
+SELECT id, username, first_name, last_name, role, shift_id, password FROM users;
 
 -- Find all Admin users
 SELECT * FROM users WHERE role = 'Admin';
-
--- Identify users who do not have a shift assigned
-SELECT * FROM users WHERE shift_id IS NULL;
 ```
 
 ### B. Testing Attendance Logs & Geofencing
@@ -104,41 +111,4 @@ SELECT ar.id, u.first_name || ' ' || u.last_name AS name, ar.type, datetime(ar.t
 
 -- Identify all remote clock-ins (punched outside the office perimeter)
 SELECT * FROM attendance_records WHERE is_remote = 1;
-
--- Check maximum distance deviations from the HQ office
-SELECT u.first_name || ' ' || u.last_name AS name, ar.distance_from_office, ar.address FROM attendance_records ar JOIN users u ON ar.user_id = u.id WHERE ar.distance_from_office > 100 ORDER BY ar.distance_from_office DESC;
-```
-
-### C. Testing Break Status
-```sql
--- Retrieve all ongoing active breaks (not clocked-out of break)
-SELECT * FROM breaks WHERE end_time IS NULL;
-
--- View break history per category
-SELECT type, count(*) as count FROM breaks GROUP BY type;
-```
-
-### D. Testing Leave Requests
-```sql
--- Retrieve all pending leave requests that need manager approval
-SELECT lr.id, u.username, lr.start_date, lr.end_date, lr.reason FROM leave_requests lr JOIN users u ON lr.user_id = u.id WHERE lr.status = 'pending';
-
--- View approved leave count per employee
-SELECT user_id, COUNT(*) FROM leave_requests WHERE status = 'approved' GROUP BY user_id;
-```
-
-### E. Testing Office Settings & Auto-Punchout Configurations
-```sql
--- Retrieve current GPS HQ settings and radius calibrations
-SELECT * FROM office_settings;
-
--- Check view live roster summary view (Manager reporting view)
-SELECT * FROM view_live_roster;
-```
-
-### F. Manually Creating an Admin User
-```sql
--- Insert a new admin user manually
-INSERT INTO users (id, username, first_name, last_name, role, shift_id)
-VALUES ('manual-admin-id', 'admin', 'System', 'Admin', 'Admin', 'shift-morning');
 ```

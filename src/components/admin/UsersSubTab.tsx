@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Shift, AttendanceRecord, BreakRecord, LeaveRequest } from '../../types';
+import { User, Shift, AttendanceRecord, BreakRecord, LeaveRequest } from '@/src/types';
 import { UserPlus, Download, Check, X } from 'lucide-react';
 
 interface UsersSubTabProps {

@@ -84,7 +84,8 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     const savedOffice = localStorage.getItem('ap_office_settings');
     if (savedOffice) {
       try {
-        office = JSON.parse(savedOffice);
+        const parsed = JSON.parse(savedOffice);
+        office = { ...DEFAULT_OFFICE_SETTINGS, ...parsed };
       } catch (e) {
         console.error('Failed to parse office settings', e);
       }
@@ -422,7 +423,7 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     if (activePunches.length === 0) return;
 
     const office = get().officeSettings;
-    const [outHours, outMins] = office.autoPunchOutTime.split(':').map(Number);
+    const [outHours, outMins] = (office.autoPunchOutTime || '00:00').split(':').map(Number);
 
     const updatedAttendance = [...attendance];
     let changes = false;

@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { AeroPunchinState } from '../useStore';
-import { Shift, OfficeSettings } from '../../types';
+import { Shift, OfficeSettings } from '@/src/types';
 
 export interface SettingsSlice {
   shifts: Shift[];

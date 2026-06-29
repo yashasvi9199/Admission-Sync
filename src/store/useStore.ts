@@ -14,6 +14,13 @@ import {
   getStoredOfflineQueue,
   generateUsername
 } from '../db/localDb';
+import { queryTurso } from '../utils/turso';
+
+export interface TursoOfflineAction {
+  id: string;
+  sql: string;
+  args: any[];
+}
 
 interface OfficeSettings {
   id: string;
@@ -33,7 +40,7 @@ interface AeroPunchinState {
   leaves: LeaveRequest[];
   shifts: Shift[];
   officeSettings: OfficeSettings;
-  offlineQueue: OfflineAction[];
+  offlineQueue: TursoOfflineAction[];
   
   // Actions
   refreshStates: () => void;
@@ -55,6 +62,7 @@ interface AeroPunchinState {
   updateOfficeSettings: (settings: Partial<OfficeSettings>) => void;
   processOfflineQueue: () => void;
   checkMidnightAutoPunchOut: () => void;
+  executeSql: (sql: string, args?: any[]) => Promise<void>;
 }
 
 const DEFAULT_OFFICE_SETTINGS: OfficeSettings = {
@@ -77,7 +85,7 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
   officeSettings: DEFAULT_OFFICE_SETTINGS,
   offlineQueue: [],
 
-  refreshStates: () => {
+  refreshStates: async () => {
     const activeUserId = localStorage.getItem('ap_active_user_id');
     const allUsers = getStoredUsers();
     const active = allUsers.find(u => u.id === activeUserId) || null;
@@ -96,6 +104,7 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
       localStorage.setItem('ap_office_settings', JSON.stringify(DEFAULT_OFFICE_SETTINGS));
     }
 
+    // Set local states first for immediate responsiveness
     set({
       activeUser: active,
       users: allUsers,
@@ -104,8 +113,116 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
       leaves: getStoredLeaves(),
       shifts: getStoredShifts(),
       officeSettings: office,
-      offlineQueue: getStoredOfflineQueue()
+      offlineQueue: JSON.parse(localStorage.getItem('ap_offline_queue') || '[]')
     });
+
+    // Fresh remote synchronization
+    try {
+      const [remoteShifts, remoteUsers, remoteRecords, remoteBreaks, remoteLeaves, remoteSettings] = await Promise.all([
+        queryTurso('SELECT * FROM shifts;'),
+        queryTurso('SELECT * FROM users;'),
+        queryTurso('SELECT * FROM attendance_records;'),
+        queryTurso('SELECT * FROM breaks;'),
+        queryTurso('SELECT * FROM leave_requests;'),
+        queryTurso('SELECT * FROM office_settings;')
+      ]);
+
+      if (remoteShifts) {
+        const mappedShifts = remoteShifts.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          startTime: s.start_time,
+          endTime: s.end_time,
+          gracePeriodMins: Number(s.grace_period_mins || 15)
+        }));
+        localStorage.setItem('ap_shifts', JSON.stringify(mappedShifts));
+        set({ shifts: mappedShifts });
+      }
+
+      if (remoteUsers) {
+        const mappedUsers = remoteUsers.map((u: any) => ({
+          id: u.id,
+          username: u.username,
+          firstName: u.first_name,
+          lastName: u.last_name,
+          role: u.role,
+          shiftId: u.shift_id,
+          createdAt: Number(u.created_at || Date.now())
+        }));
+        localStorage.setItem('ap_users', JSON.stringify(mappedUsers));
+        const updatedActive = mappedUsers.find((u: any) => u.id === activeUserId) || null;
+        set({ users: mappedUsers, activeUser: updatedActive });
+      }
+
+      if (remoteRecords) {
+        const mappedRecords = remoteRecords.map((r: any) => ({
+          id: r.id,
+          userId: r.user_id,
+          name: remoteUsers?.find((u: any) => u.id === r.user_id) 
+            ? `${remoteUsers.find((u: any) => u.id === r.user_id).first_name} ${remoteUsers.find((u: any) => u.id === r.user_id).last_name}` 
+            : 'Unknown',
+          timestamp: Number(r.timestamp),
+          type: r.type,
+          latitude: Number(r.latitude),
+          longitude: Number(r.longitude),
+          address: r.address,
+          distanceFromOffice: r.distance_from_office ? Number(r.distance_from_office) : undefined,
+          isRemote: Boolean(r.is_remote),
+          accuracy: r.accuracy ? Number(r.accuracy) : undefined,
+          synced: Boolean(r.synced)
+        }));
+        localStorage.setItem('ap_attendance', JSON.stringify(mappedRecords));
+        set({ records: mappedRecords });
+      }
+
+      if (remoteBreaks) {
+        const mappedBreaks = remoteBreaks.map((b: any) => ({
+          id: b.id,
+          userId: b.user_id,
+          type: b.type,
+          startTime: Number(b.start_time),
+          endTime: b.end_time ? Number(b.end_time) : null
+        }));
+        localStorage.setItem('ap_breaks', JSON.stringify(mappedBreaks));
+        set({ breaks: mappedBreaks });
+      }
+
+      if (remoteLeaves) {
+        const mappedLeaves = remoteLeaves.map((l: any) => ({
+          id: l.id,
+          userId: l.user_id,
+          employeeName: remoteUsers?.find((u: any) => u.id === l.user_id) 
+            ? `${remoteUsers.find((u: any) => u.id === l.user_id).first_name} ${remoteUsers.find((u: any) => u.id === l.user_id).last_name}` 
+            : 'Unknown',
+          type: l.type,
+          startDate: l.start_date,
+          endDate: l.end_date,
+          reason: l.reason,
+          status: l.status,
+          approvedBy: l.approved_by,
+          createdAt: Number(l.created_at || Date.now())
+        }));
+        localStorage.setItem('ap_leaves', JSON.stringify(mappedLeaves));
+        set({ leaves: mappedLeaves });
+      }
+
+      if (remoteSettings && remoteSettings[0]) {
+        const s = remoteSettings[0];
+        const mappedSettings = {
+          id: s.id,
+          name: s.name,
+          latitude: Number(s.latitude),
+          longitude: Number(s.longitude),
+          geofenceRadius: Number(s.geofence_radius),
+          autoPunchOutTime: s.auto_punch_out_time || '00:00',
+          workingDays: s.working_days ? s.working_days.split(',') : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+        };
+        localStorage.setItem('ap_office_settings', JSON.stringify(mappedSettings));
+        set({ officeSettings: mappedSettings });
+      }
+    } catch (err) {
+      console.warn('Failed to sync states from Turso, operating offline.', err);
+    }
   },
 
   login: (username, password) => {
@@ -175,8 +292,18 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     users.push(newUser);
     localStorage.setItem('ap_users', JSON.stringify(users));
     localStorage.setItem('ap_active_user_id', newUser.id);
-    get().refreshStates();
+    
+    // Remote Sync to Turso
+    get().executeSql('INSERT OR REPLACE INTO users (id, username, first_name, last_name, role, shift_id) VALUES (?, ?, ?, ?, ?, ?);', [
+      newUser.id,
+      newUser.username,
+      newUser.firstName,
+      newUser.lastName,
+      newUser.role,
+      newUser.shiftId
+    ]);
 
+    get().refreshStates();
     return { user: newUser };
   },
 
@@ -204,8 +331,18 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
 
     users.push(newUser);
     localStorage.setItem('ap_users', JSON.stringify(users));
-    get().refreshStates();
 
+    // Remote Sync to Turso
+    get().executeSql('INSERT OR REPLACE INTO users (id, username, first_name, last_name, role, shift_id) VALUES (?, ?, ?, ?, ?, ?);', [
+      newUser.id,
+      newUser.username,
+      newUser.firstName,
+      newUser.lastName,
+      newUser.role,
+      newUser.shiftId
+    ]);
+
+    get().refreshStates();
     return { user: newUser };
   },
 
@@ -225,23 +362,26 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
       distanceFromOffice,
       isRemote,
       accuracy,
-      synced: isOnline
+      synced: true
     };
 
-    if (isOnline) {
-      const records = [newRecord, ...get().records];
-      localStorage.setItem('ap_attendance', JSON.stringify(records));
-      set({ records });
-    } else {
-      const queue = [...get().offlineQueue, {
-        id: crypto.randomUUID(),
-        type: 'punch',
-        payload: newRecord,
-        timestamp: Date.now()
-      } as OfflineAction];
-      localStorage.setItem('ap_offline_queue', JSON.stringify(queue));
-      set({ offlineQueue: queue });
-    }
+    const records = [newRecord, ...get().records];
+    localStorage.setItem('ap_attendance', JSON.stringify(records));
+    set({ records });
+
+    // Remote Sync via executeSql (queues on network error)
+    get().executeSql('INSERT OR REPLACE INTO attendance_records (id, user_id, type, timestamp, latitude, longitude, address, distance_from_office, is_remote, accuracy, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1);', [
+      newRecord.id,
+      newRecord.userId,
+      newRecord.type,
+      newRecord.timestamp,
+      newRecord.latitude,
+      newRecord.longitude,
+      newRecord.address,
+      newRecord.distanceFromOffice || 0,
+      newRecord.isRemote,
+      newRecord.accuracy || 0
+    ]);
   },
 
   triggerBreak: (type, isOnline) => {
@@ -257,16 +397,8 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
       localStorage.setItem('ap_breaks', JSON.stringify(updated));
       set({ breaks: updated });
 
-      if (!isOnline) {
-        const queue = [...get().offlineQueue, {
-          id: crypto.randomUUID(),
-          type: 'break_end',
-          payload: { userId: activeUser.id, breakId: active.id },
-          timestamp: now
-        } as OfflineAction];
-        localStorage.setItem('ap_offline_queue', JSON.stringify(queue));
-        set({ offlineQueue: queue });
-      }
+      // Sync to Turso
+      get().executeSql('UPDATE breaks SET end_time = ? WHERE id = ?;', [now, active.id]);
     } else {
       // Start Break
       const newBreak: BreakRecord = {
@@ -281,16 +413,13 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
       localStorage.setItem('ap_breaks', JSON.stringify(updated));
       set({ breaks: updated });
 
-      if (!isOnline) {
-        const queue = [...get().offlineQueue, {
-          id: crypto.randomUUID(),
-          type: 'break_start',
-          payload: newBreak,
-          timestamp: Date.now()
-        } as OfflineAction];
-        localStorage.setItem('ap_offline_queue', JSON.stringify(queue));
-        set({ offlineQueue: queue });
-      }
+      // Sync to Turso
+      get().executeSql('INSERT OR REPLACE INTO breaks (id, user_id, type, start_time, end_time) VALUES (?, ?, ?, ?, NULL);', [
+        newBreak.id,
+        newBreak.userId,
+        newBreak.type,
+        newBreak.startTime
+      ]);
     }
   },
 
@@ -310,20 +439,19 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
       createdAt: Date.now()
     };
 
-    if (isOnline) {
-      const leaves = [newRequest, ...get().leaves];
-      localStorage.setItem('ap_leaves', JSON.stringify(leaves));
-      set({ leaves });
-    } else {
-      const queue = [...get().offlineQueue, {
-        id: crypto.randomUUID(),
-        type: 'leave_request',
-        payload: newRequest,
-        timestamp: Date.now()
-      } as OfflineAction];
-      localStorage.setItem('ap_offline_queue', JSON.stringify(queue));
-      set({ offlineQueue: queue });
-    }
+    const leaves = [newRequest, ...get().leaves];
+    localStorage.setItem('ap_leaves', JSON.stringify(leaves));
+    set({ leaves });
+
+    // Sync to Turso
+    get().executeSql("INSERT OR REPLACE INTO leave_requests (id, user_id, type, start_date, end_date, reason, status, approved_by) VALUES (?, ?, 'other', ?, ?, ?, 'pending', NULL);", [
+      newRequest.id,
+      newRequest.userId,
+      newRequest.startDate,
+      newRequest.endDate,
+      newRequest.reason
+    ]);
+
     return {};
   },
 
@@ -334,24 +462,47 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     const updated = leaves.map(l => l.id === leaveId ? { ...l, status, approvedBy: activeUser.id } : l);
     localStorage.setItem('ap_leaves', JSON.stringify(updated));
     set({ leaves: updated });
+
+    // Sync to Turso
+    get().executeSql('UPDATE leave_requests SET status = ?, approved_by = ? WHERE id = ?;', [
+      status,
+      activeUser.id,
+      leaveId
+    ]);
   },
 
   editRecordTimestamp: (recordId, newTimestamp) => {
     const updated = get().records.map(rec => rec.id === recordId ? { ...rec, timestamp: newTimestamp } : rec);
     localStorage.setItem('ap_attendance', JSON.stringify(updated));
     set({ records: updated });
+
+    // Sync to Turso
+    get().executeSql('UPDATE attendance_records SET timestamp = ? WHERE id = ?;', [newTimestamp, recordId]);
   },
 
   editRecord: (recordId, updates) => {
     const updated = get().records.map(rec => rec.id === recordId ? { ...rec, ...updates } : rec);
     localStorage.setItem('ap_attendance', JSON.stringify(updated));
     set({ records: updated });
+
+    // Sync to Turso
+    get().executeSql('UPDATE attendance_records SET type = ?, timestamp = ?, address = ? WHERE id = ?;', [
+      updates.type,
+      updates.timestamp,
+      updates.address,
+      recordId
+    ]);
   },
 
   deleteRecords: (recordIds) => {
     const updated = get().records.filter(rec => !recordIds.includes(rec.id));
     localStorage.setItem('ap_attendance', JSON.stringify(updated));
     set({ records: updated });
+
+    // Sync to Turso
+    recordIds.forEach(id => {
+      get().executeSql('DELETE FROM attendance_records WHERE id = ?;', [id]);
+    });
   },
 
   adminCreateLog: (userId, type, timestamp, address) => {
@@ -373,18 +524,35 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     const updated = [newRecord, ...get().records];
     localStorage.setItem('ap_attendance', JSON.stringify(updated));
     set({ records: updated });
+
+    // Sync to Turso
+    get().executeSql('INSERT OR REPLACE INTO attendance_records (id, user_id, type, timestamp, latitude, longitude, address, distance_from_office, is_remote, accuracy, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 1);', [
+      newRecord.id,
+      newRecord.userId,
+      newRecord.type,
+      newRecord.timestamp,
+      newRecord.latitude,
+      newRecord.longitude,
+      newRecord.address
+    ]);
   },
 
   changeUserRole: (userId, role) => {
     const updated = get().users.map(u => u.id === userId ? { ...u, role } : u);
     localStorage.setItem('ap_users', JSON.stringify(updated));
     set({ users: updated });
+
+    // Sync to Turso
+    get().executeSql('UPDATE users SET role = ? WHERE id = ?;', [role, userId]);
   },
 
   changeUserShift: (userId, shiftId) => {
     const updated = get().users.map(u => u.id === userId ? { ...u, shiftId } : u);
     localStorage.setItem('ap_users', JSON.stringify(updated));
     set({ users: updated });
+
+    // Sync to Turso
+    get().executeSql('UPDATE users SET shift_id = ? WHERE id = ?;', [shiftId, userId]);
   },
 
   createNewShift: (name, startTime, endTime, gracePeriodMins) => {
@@ -399,58 +567,54 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     const updated = [...shifts, newShift];
     localStorage.setItem('ap_shifts', JSON.stringify(updated));
     set({ shifts: updated });
+
+    // Sync to Turso
+    get().executeSql('INSERT OR REPLACE INTO shifts (id, name, start_time, end_time, grace_period_mins) VALUES (?, ?, ?, ?, ?);', [
+      newShift.id,
+      newShift.name,
+      newShift.startTime,
+      newShift.endTime,
+      newShift.gracePeriodMins
+    ]);
   },
 
   updateOfficeSettings: (settings) => {
     const updated = { ...get().officeSettings, ...settings };
     localStorage.setItem('ap_office_settings', JSON.stringify(updated));
     set({ officeSettings: updated });
+
+    // Sync to Turso
+    get().executeSql("INSERT OR REPLACE INTO office_settings (id, name, latitude, longitude, geofence_radius, auto_punch_out_time, working_days) VALUES ('default-office', ?, ?, ?, ?, ?, ?);", [
+      updated.name,
+      updated.latitude,
+      updated.longitude,
+      updated.geofenceRadius,
+      updated.autoPunchOutTime,
+      updated.workingDays.join(',')
+    ]);
   },
 
-  processOfflineQueue: () => {
+  processOfflineQueue: async () => {
     const queue = get().offlineQueue;
     if (queue.length === 0) return;
 
-    const currentAttendance = [...get().records];
-    const currentLeaves = [...get().leaves];
-    const currentBreaks = [...get().breaks];
-
-    queue.forEach(action => {
-      if (action.type === 'punch') {
-        const record = { ...action.payload, synced: true };
-        if (!currentAttendance.find(a => a.id === record.id)) {
-          currentAttendance.unshift(record);
-        }
-      } else if (action.type === 'break_start') {
-        const br = action.payload;
-        if (!currentBreaks.find(b => b.id === br.id)) {
-          currentBreaks.push(br);
-        }
-      } else if (action.type === 'break_end') {
-        const { breakId } = action.payload;
-        const idx = currentBreaks.findIndex(b => b.id === breakId);
-        if (idx !== -1) {
-          currentBreaks[idx].endTime = action.timestamp;
-        }
-      } else if (action.type === 'leave_request') {
-        const lv = action.payload;
-        if (!currentLeaves.find(l => l.id === lv.id)) {
-          currentLeaves.unshift(lv);
-        }
+    const remaining: TursoOfflineAction[] = [];
+    for (const action of queue) {
+      try {
+        await queryTurso(action.sql, action.args);
+      } catch (err) {
+        console.warn('Failed to sync queued action, keeping in offline queue:', action, err);
+        remaining.push(action);
       }
-    });
+    }
 
+    localStorage.setItem('ap_offline_queue', JSON.stringify(remaining));
+    set({ offlineQueue: remaining });
+
+    // Mark all existing records as synced locally
+    const currentAttendance = get().records.map(r => ({ ...r, synced: true }));
     localStorage.setItem('ap_attendance', JSON.stringify(currentAttendance));
-    localStorage.setItem('ap_leaves', JSON.stringify(currentLeaves));
-    localStorage.setItem('ap_breaks', JSON.stringify(currentBreaks));
-    localStorage.setItem('ap_offline_queue', JSON.stringify([]));
-
-    set({
-      records: currentAttendance,
-      leaves: currentLeaves,
-      breaks: currentBreaks,
-      offlineQueue: []
-    });
+    set({ records: currentAttendance });
   },
 
   checkMidnightAutoPunchOut: () => {
@@ -505,6 +669,23 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
     if (changes) {
       localStorage.setItem('ap_attendance', JSON.stringify(updatedAttendance));
       set({ records: updatedAttendance });
+    }
+  },
+
+  executeSql: async (sql, args = []) => {
+    try {
+      await queryTurso(sql, args);
+    } catch (err) {
+      console.warn('Turso write failed, queued offline.', err);
+      const queue = get().offlineQueue;
+      const newAction: TursoOfflineAction = {
+        id: crypto.randomUUID(),
+        sql,
+        args
+      };
+      const updatedQueue = [...queue, newAction];
+      localStorage.setItem('ap_offline_queue', JSON.stringify(updatedQueue));
+      set({ offlineQueue: updatedQueue });
     }
   }
 }));

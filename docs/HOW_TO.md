@@ -78,6 +78,11 @@ export ANDROID_HOME=$HOME/Android/Sdk
 export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
 ```
 
+After setting `ANDROID_HOME`, create `android/local.properties` (this file is gitignored — every dev must create it locally):
+```bash
+echo "sdk.dir=$HOME/Android/Sdk" > android/local.properties
+```
+
 ### Fix: `gradlew: Permission Denied`
 The Gradle wrapper script must be executable. Run once on a fresh clone:
 ```bash

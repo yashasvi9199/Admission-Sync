@@ -46,6 +46,9 @@ interface AeroPunchinState {
   requestLeave: (startDate: string, endDate: string, reason: string, isOnline: boolean) => { error?: string };
   updateLeaveStatus: (leaveId: string, status: 'approved' | 'rejected') => void;
   editRecordTimestamp: (recordId: string, newTimestamp: number) => void;
+  editRecord: (recordId: string, updates: Partial<AttendanceRecord>) => void;
+  deleteRecords: (recordIds: string[]) => void;
+  adminCreateLog: (userId: string, type: 'in' | 'out', timestamp: number, address: string) => void;
   changeUserRole: (userId: string, role: User['role']) => void;
   changeUserShift: (userId: string, shiftId: string) => void;
   createNewShift: (name: string, startTime: string, endTime: string, gracePeriodMins: number) => void;
@@ -335,6 +338,39 @@ export const useStore = create<AeroPunchinState>((set, get) => ({
 
   editRecordTimestamp: (recordId, newTimestamp) => {
     const updated = get().records.map(rec => rec.id === recordId ? { ...rec, timestamp: newTimestamp } : rec);
+    localStorage.setItem('ap_attendance', JSON.stringify(updated));
+    set({ records: updated });
+  },
+
+  editRecord: (recordId, updates) => {
+    const updated = get().records.map(rec => rec.id === recordId ? { ...rec, ...updates } : rec);
+    localStorage.setItem('ap_attendance', JSON.stringify(updated));
+    set({ records: updated });
+  },
+
+  deleteRecords: (recordIds) => {
+    const updated = get().records.filter(rec => !recordIds.includes(rec.id));
+    localStorage.setItem('ap_attendance', JSON.stringify(updated));
+    set({ records: updated });
+  },
+
+  adminCreateLog: (userId, type, timestamp, address) => {
+    const user = get().users.find(u => u.id === userId);
+    if (!user) return;
+    const newRecord: AttendanceRecord = {
+      id: crypto.randomUUID(),
+      userId,
+      name: `${user.firstName} ${user.lastName}`,
+      type,
+      timestamp,
+      latitude: get().officeSettings.latitude,
+      longitude: get().officeSettings.longitude,
+      address: address || `Manual Entry (${get().officeSettings.latitude.toFixed(5)}, ${get().officeSettings.longitude.toFixed(5)})`,
+      distanceFromOffice: 0,
+      isRemote: false,
+      synced: true
+    };
+    const updated = [newRecord, ...get().records];
     localStorage.setItem('ap_attendance', JSON.stringify(updated));
     set({ records: updated });
   },

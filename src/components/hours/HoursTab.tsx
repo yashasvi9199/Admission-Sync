@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, AttendanceRecord } from '../../types';
+import { User, AttendanceRecord } from '@/src/types';
 
 interface HoursTabProps {
   activeUser: User;

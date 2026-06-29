@@ -63,6 +63,9 @@ export default function App() {
     requestLeave,
     updateLeaveStatus,
     editRecordTimestamp,
+    editRecord,
+    deleteRecords,
+    adminCreateLog,
     changeUserRole,
     changeUserShift,
     createNewShift,
@@ -98,6 +101,66 @@ export default function App() {
   const [leaveEnd, setLeaveEnd] = useState(''); // Default empty/non-numeric
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveError, setLeaveError] = useState<string | null>(null);
+
+  // Admin Logs Management states
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [showNewLogForm, setShowNewLogForm] = useState(false);
+
+  // New Log form fields
+  const [newLogUserId, setNewLogUserId] = useState('');
+  const [newLogType, setNewLogType] = useState<'in' | 'out'>('in');
+  const [newLogDate, setNewLogDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newLogTime, setNewLogTime] = useState('09:00');
+  const [newLogAddress, setNewLogAddress] = useState('');
+
+  // Edit Log form fields
+  const [editLogType, setEditLogType] = useState<'in' | 'out'>('in');
+  const [editLogDate, setEditLogDate] = useState('');
+  const [editLogTime, setEditLogTime] = useState('');
+  const [editLogAddress, setEditLogAddress] = useState('');
+
+  const handleAdminCreateLogSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLogUserId) return;
+    const datetime = new Date(`${newLogDate}T${newLogTime}`);
+    adminCreateLog(newLogUserId, newLogType, datetime.getTime(), newLogAddress);
+    setShowNewLogForm(false);
+    setNewLogUserId('');
+    setNewLogAddress('');
+  };
+
+  const handleAdminEditLogSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRecord) return;
+    const datetime = new Date(`${editLogDate}T${editLogTime}`);
+    editRecord(editingRecord.id, {
+      type: editLogType,
+      timestamp: datetime.getTime(),
+      address: editLogAddress
+    });
+    setEditingRecord(null);
+  };
+
+  const handleDeleteSelectedLogs = () => {
+    if (selectedRecordIds.length === 0) return;
+    deleteRecords(selectedRecordIds);
+    setSelectedRecordIds([]);
+  };
+
+  const handleToggleSelectRecord = (id: string) => {
+    setSelectedRecordIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllRecords = () => {
+    if (selectedRecordIds.length === records.length) {
+      setSelectedRecordIds([]);
+    } else {
+      setSelectedRecordIds(records.map(r => r.id));
+    }
+  };
 
   // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -706,59 +769,264 @@ export default function App() {
                 </>
               )}
 
-              {/* LOGS ACTIVITY VIEW (Visible to everyone, enhanced styling) */}
+              {/* LOGS ACTIVITY VIEW (Visible to everyone, enhanced styling, edit/delete/create for Admin) */}
               {activeTab === 'logs' && (
                 <div className="flex-1 flex flex-col min-h-0 space-y-3">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block px-0.5">Workforce Logs Feed</span>
+                  <div className="flex justify-between items-center px-0.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Workforce Logs Feed</span>
+                    {activeUser.role === 'Admin' && (
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => {
+                            setShowNewLogForm(!showNewLogForm);
+                            setEditingRecord(null);
+                          }}
+                          className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase rounded-lg shadow-sm"
+                        >
+                          {showNewLogForm ? 'Close Form' : 'New Log'}
+                        </button>
+                        {records.length > 0 && (
+                          <button
+                            onClick={handleSelectAllRecords}
+                            className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[9px] font-black uppercase rounded-lg"
+                          >
+                            {selectedRecordIds.length === records.length ? 'Deselect All' : 'Select All'}
+                          </button>
+                        )}
+                        {selectedRecordIds.length > 0 && (
+                          <button
+                            onClick={handleDeleteSelectedLogs}
+                            className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-black uppercase rounded-lg shadow-sm"
+                          >
+                            Delete ({selectedRecordIds.length})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manual Log Creation Form (Admin only) */}
+                  {activeUser.role === 'Admin' && showNewLogForm && (
+                    <form onSubmit={handleAdminCreateLogSubmit} className="p-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 space-y-2 text-xs">
+                      <span className="text-[9px] font-black uppercase text-indigo-400 block">Create Manual Log Entry</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Select User</label>
+                          <select
+                            value={newLogUserId}
+                            onChange={(e) => setNewLogUserId(e.target.value)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                            required
+                          >
+                            <option value="">-- Choose User --</option>
+                            {users.map(u => (
+                              <option key={u.id} value={u.id}>{u.firstName} {u.lastName} (@{u.username})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Action Type</label>
+                          <select
+                            value={newLogType}
+                            onChange={(e) => setNewLogType(e.target.value as any)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                          >
+                            <option value="in">Clock In</option>
+                            <option value="out">Clock Out</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Date</label>
+                          <input
+                            type="date"
+                            value={newLogDate}
+                            onChange={(e) => setNewLogDate(e.target.value)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Time</label>
+                          <input
+                            type="time"
+                            value={newLogTime}
+                            onChange={(e) => setNewLogTime(e.target.value)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Location / Address (optional)</label>
+                        <input
+                          type="text"
+                          placeholder="Manual location details..."
+                          value={newLogAddress}
+                          onChange={(e) => setNewLogAddress(e.target.value)}
+                          className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-wider rounded-lg shadow-sm"
+                      >
+                        Submit Manual Entry
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Log Edit Form (Admin only) */}
+                  {activeUser.role === 'Admin' && editingRecord && (
+                    <form onSubmit={handleAdminEditLogSubmit} className="p-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 space-y-2 text-xs">
+                      <span className="text-[9px] font-black uppercase text-amber-500 block">Edit Log: {editingRecord.name}</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Action Type</label>
+                          <select
+                            value={editLogType}
+                            onChange={(e) => setEditLogType(e.target.value as any)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                          >
+                            <option value="in">Clock In</option>
+                            <option value="out">Clock Out</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Location / Address</label>
+                          <input
+                            type="text"
+                            value={editLogAddress}
+                            onChange={(e) => setEditLogAddress(e.target.value)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Date</label>
+                          <input
+                            type="date"
+                            value={editLogDate}
+                            onChange={(e) => setEditLogDate(e.target.value)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] uppercase text-slate-400 font-bold mb-0.5">Time</label>
+                          <input
+                            type="time"
+                            value={editLogTime}
+                            onChange={(e) => setEditLogTime(e.target.value)}
+                            className="w-full p-1.5 rounded-lg text-[10px] font-bold border bg-[#1E293B] border-slate-800 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingRecord(null)}
+                          className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[9px] font-black uppercase rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[9px] font-black uppercase rounded-lg"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   <div className="flex-1 overflow-y-auto space-y-3 max-h-[500px]">
                     {records.map(rec => {
                       const hasAddress = rec.address && rec.address !== '' && !rec.address.startsWith('HQ Office Area') && !rec.address.startsWith('Office Geofence');
-                      const showCoords = !hasAddress; // Show coordinates ONLY once, and ONLY when no clean address is present
+                      const showCoords = !hasAddress;
+                      const isSelected = selectedRecordIds.includes(rec.id);
                       
                       return (
                         <div 
                           key={rec.id}
-                          className={`p-3.5 rounded-2xl border flex flex-col gap-2 transition-all duration-300 text-xs shadow-sm ${
-                            currentStatus === 'in' 
-                              ? 'bg-slate-50 border-slate-200 text-slate-800 shadow-slate-200/50 hover:bg-slate-100' 
-                              : 'bg-slate-900/60 border-slate-800 text-slate-200 hover:bg-slate-850/60'
+                          className={`p-3.5 rounded-2xl border flex gap-3 transition-all duration-300 text-xs shadow-sm items-start ${
+                            isSelected
+                              ? 'bg-indigo-500/10 border-indigo-500/30'
+                              : currentStatus === 'in' 
+                                ? 'bg-slate-50 border-slate-200 text-slate-800 shadow-slate-200/50 hover:bg-slate-100' 
+                                : 'bg-slate-900/60 border-slate-800 text-slate-200 hover:bg-slate-850/60'
                           }`}
                         >
-                          <div className="flex justify-between items-center">
-                            <span className={`px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wider ${
-                              currentStatus === 'in' 
-                                ? 'bg-indigo-50 text-indigo-700' 
-                                : 'bg-indigo-950/50 text-indigo-400 border border-indigo-900/40'
-                            }`}>
-                              {rec.name}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${
-                              rec.type === 'in' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-                            }`}>
-                              {rec.type === 'in' ? 'Clock In' : 'Clock Out'}
-                            </span>
-                          </div>
+                          {/* Selection Checkbox (Admin only) */}
+                          {activeUser.role === 'Admin' && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectRecord(rec.id)}
+                              className="mt-1 w-3.5 h-3.5 rounded-lg border-slate-300 dark:border-slate-800 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                          )}
 
-                          <div className="text-[11px] font-bold border-b border-dashed border-slate-200 dark:border-slate-800/80 pb-1.5 flex justify-between items-center">
-                            <span className="text-slate-400">Date: {formatDetailedDate(rec.timestamp)}</span>
-                            <span className="text-indigo-400">{format12HourTime(rec.timestamp)}</span>
-                          </div>
-
-                          <div className="flex flex-col gap-1 text-[10px] text-slate-400">
-                            {showCoords ? (
-                              <p className="font-mono bg-slate-950/20 p-1.5 rounded-lg border border-slate-850 text-center">
-                                Coords: {rec.latitude.toFixed(5)}, {rec.longitude.toFixed(5)}
-                              </p>
-                            ) : (
-                              <p className="leading-normal">{rec.address}</p>
-                            )}
-
-                            {rec.distanceFromOffice !== undefined && (
-                              <span className={`font-black text-[9px] uppercase mt-1 self-end ${rec.isRemote ? 'text-amber-500' : 'text-emerald-500'}`}>
-                                {rec.isRemote ? 'Remote workplace' : `Verified inside geofence (${rec.distanceFromOffice}m)`}
+                          <div className="flex-1 flex flex-col gap-2">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wider ${
+                                  currentStatus === 'in' 
+                                    ? 'bg-indigo-50 text-indigo-700' 
+                                    : 'bg-indigo-950/50 text-indigo-400 border border-indigo-900/40'
+                                }`}>
+                                  {rec.name}
+                                </span>
+                                {activeUser.role === 'Admin' && (
+                                  <button
+                                    onClick={() => {
+                                      const recDate = new Date(rec.timestamp);
+                                      const dateStr = recDate.toISOString().split('T')[0];
+                                      const timeStr = recDate.toTimeString().split(' ')[0].substring(0, 5); // "HH:MM"
+                                      setEditingRecord(rec);
+                                      setEditLogType(rec.type);
+                                      setEditLogDate(dateStr);
+                                      setEditLogTime(timeStr);
+                                      setEditLogAddress(rec.address || '');
+                                      setShowNewLogForm(false);
+                                    }}
+                                    className="text-[9px] text-amber-500 hover:underline font-bold"
+                                  >
+                                    [Edit]
+                                  </button>
+                                )}
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                                rec.type === 'in' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                              }`}>
+                                {rec.type === 'in' ? 'Clock In' : 'Clock Out'}
                               </span>
-                            )}
+                            </div>
+
+                            <div className="text-[11px] font-bold border-b border-dashed border-slate-200 dark:border-slate-800/80 pb-1.5 flex justify-between items-center">
+                              <span className="text-slate-400">Date: {formatDetailedDate(rec.timestamp)}</span>
+                              <span className="text-indigo-400">{format12HourTime(rec.timestamp)}</span>
+                            </div>
+
+                            <div className="flex flex-col gap-1 text-[10px] text-slate-400">
+                              {showCoords ? (
+                                <p className="font-mono bg-slate-950/20 p-1.5 rounded-lg border border-slate-850 text-center">
+                                  Coords: {rec.latitude.toFixed(5)}, {rec.longitude.toFixed(5)}
+                                </p>
+                              ) : (
+                                <p className="leading-normal">{rec.address}</p>
+                              )}
+
+                              {rec.distanceFromOffice !== undefined && (
+                                <span className={`font-black text-[9px] uppercase mt-1 self-end ${rec.isRemote ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                  {rec.isRemote ? 'Remote workplace' : `Verified inside geofence (${rec.distanceFromOffice}m)`}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );

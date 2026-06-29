@@ -28,9 +28,12 @@ android/.gradle/
 android/local.properties
 android/app/release/
 android/app/debug/
+!android/gradlew
+!android/gradlew.bat
 *.apk
 *.aab
 *.keystore
+!android/app/aeropunchin-release.keystore
 *.jks
 
 # Capacitor iOS build artifacts

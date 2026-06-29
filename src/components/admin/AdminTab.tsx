@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Users, Clock, MapPin, AlertTriangle, ArrowLeft } from 'lucide-react';
-import { User, Shift, AttendanceRecord, BreakRecord, LeaveRequest, OfficeSettings } from '../../types';
+import { User, Shift, AttendanceRecord, BreakRecord, LeaveRequest, OfficeSettings } from '@/src/types';
 import UsersSubTab from './UsersSubTab';
 import ShiftsSubTab from './ShiftsSubTab';
 import OfficeSettingsSubTab from './OfficeSettingsSubTab';

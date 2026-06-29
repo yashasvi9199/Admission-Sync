@@ -7,7 +7,8 @@ This document records the design constraints, architecture rules, and filesystem
 Every modification must strictly maintain user control, git history sanity, and design system integrity:
 - **No Unrequested Scope Expansion**: Fixes or new feature creations must stay localized to the required domain.
 - **Surgical Edits**: Edits should target minimal diff structures. Full file rewrites are reserved for setup or major overhauls.
-- **Mock DB Engine**: Local storage acts as a mock client-side cache mirroring remote Turso database schemas.
+- **Zustand Slice Pattern**: Large store states must be split into slices (auth, settings, leaves, attendance, offline) and unified into a single bounded store.
+- **File Length Limit**: To prevent file bloat and ease code reviews, no frontend React view or component file is permitted to exceed 300 lines of code.
 
 ## 2. Naming Standards
 - **Folder and Files**: kebab-case (e.g. `device-card.tsx`).

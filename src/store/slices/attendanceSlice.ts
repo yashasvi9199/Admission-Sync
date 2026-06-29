@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { AeroPunchinState } from '../useStore';
-import { AttendanceRecord, BreakRecord } from '../../types';
+import { AttendanceRecord, BreakRecord } from '@/src/types';
 
 export interface AttendanceSlice {
   records: AttendanceRecord[];

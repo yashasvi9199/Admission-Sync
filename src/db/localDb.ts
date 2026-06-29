@@ -175,8 +175,30 @@ export const registerUser = (firstName: string, lastName: string, role: string, 
   return { user: newUser };
 };
 
-export const loginUser = (username: string): { user: User | null; error?: string } => {
+export const loginUser = (username: string, password?: string): { user: User | null; error?: string } => {
   const users = getStoredUsers();
+
+  // Local development bypass check
+  if (username.trim().toLowerCase() === 'admin' && password === 'admin') {
+    let found = users.find(u => u.username.toLowerCase() === 'admin');
+    if (!found) {
+      const newAdmin: User = {
+        id: 'admin-bypass-id',
+        username: 'admin',
+        firstName: 'System',
+        lastName: 'Admin',
+        role: 'Admin',
+        shiftId: 'shift-morning',
+        createdAt: Date.now()
+      };
+      users.push(newAdmin);
+      localStorage.setItem('ap_users', JSON.stringify(users));
+      found = newAdmin;
+    }
+    localStorage.setItem('ap_active_user_id', found.id);
+    return { user: found };
+  }
+
   const found = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
   
   if (!found) {

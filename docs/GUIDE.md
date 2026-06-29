@@ -76,4 +76,62 @@ This project is configured with Capacitor.
 
 ## 10. Troubleshooting & Syncing
 - **Offline Syncing**: When offline, a red banner appears. Punches are stored locally in the sync queue. Clicking **Sync Queue** once connection is restored uploads the data.
-- **Midnight Auto-Punchout**: If you forget to clock out, the system automatically checks out at 23:59:59 of that day.
+- **Midnight Auto-Punchout**: If you forget to clock out, the system automatically checks out at the configured time (default 00:00).
+
+## 11. Database Query Testing Recipes
+To verify data consistency and test application features by running queries on your Turso SQLite database, connect to the database shell:
+```bash
+turso db shell aeropunchin-db
+```
+Then, execute any of the following queries:
+
+### A. Testing User Privileges & Roster Profiles
+```sql
+-- Retrieve all registered employees
+SELECT id, username, first_name, last_name, role, shift_id FROM users;
+
+-- Find all Admin users
+SELECT * FROM users WHERE role = 'Admin';
+
+-- Identify users who do not have a shift assigned
+SELECT * FROM users WHERE shift_id IS NULL;
+```
+
+### B. Testing Attendance Logs & Geofencing
+```sql
+-- List attendance history sorted from newest to oldest
+SELECT id, name, type, datetime(timestamp/1000, 'unixepoch', 'localtime') AS punch_time, address FROM attendance_records ORDER BY timestamp DESC;
+
+-- Identify all remote clock-ins (punched outside the office perimeter)
+SELECT * FROM attendance_records WHERE is_remote = 1;
+
+-- Check maximum distance deviations from the HQ office
+SELECT name, distance_from_office, address FROM attendance_records WHERE distance_from_office > 100 ORDER BY distance_from_office DESC;
+```
+
+### C. Testing Break Status
+```sql
+-- Retrieve all ongoing active breaks (not clocked-out of break)
+SELECT * FROM breaks WHERE end_time IS NULL;
+
+-- View break history per category
+SELECT type, count(*) as count FROM breaks GROUP BY type;
+```
+
+### D. Testing Leave Requests
+```sql
+-- Retrieve all pending leave requests that need manager approval
+SELECT lr.id, u.username, lr.start_date, lr.end_date, lr.reason FROM leave_requests lr JOIN users u ON lr.user_id = u.id WHERE lr.status = 'pending';
+
+-- View approved leave count per employee
+SELECT user_id, COUNT(*) FROM leave_requests WHERE status = 'approved' GROUP BY user_id;
+```
+
+### E. Testing Office Settings & Auto-Punchout Configurations
+```sql
+-- Retrieve current GPS HQ settings and radius calibrations
+SELECT * FROM office_settings;
+
+-- Check view live roster summary view (Manager reporting view)
+SELECT * FROM view_live_roster;
+```

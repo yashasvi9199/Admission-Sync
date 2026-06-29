@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "vite-dev": "vite --port=3001 --host=0.0.0.0",
-    "dev": "wrangler pages dev --port=3000 --compatibility-date=2024-01-01 --proxy=http://localhost:3001 -- npm run vite-dev",
+    "dev": "vite --port=3001 --host=0.0.0.0 & wrangler pages dev --port=3000 --compatibility-date=2024-01-01 --proxy=3001",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",

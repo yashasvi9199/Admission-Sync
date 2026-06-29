@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { User, LeaveRequest } from '../../types';
+import { User, LeaveRequest } from '@/src/types';
 
 interface LeavesTabProps {
   activeUser: User;

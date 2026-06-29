@@ -10,8 +10,12 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
   // Convert libsql:// to https://
   const httpUrl = dbUrl.replace(/^libsql:\/\//, 'https://');
 
+  // CORS bypass proxy for local development server
+  const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const requestUrl = isLocalDev ? '/api/turso/v2/pipeline' : `${httpUrl}/v2/pipeline`;
+
   try {
-    const response = await fetch(`${httpUrl}/v2/pipeline`, {
+    const response = await fetch(requestUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

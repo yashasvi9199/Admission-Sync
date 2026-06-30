@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { Capacitor } from '@capacitor/core';
 import { 
   Clock, Sliders, BarChart3, Calendar, Settings, 
   Signal, Wifi, Battery, AlertTriangle, CheckCircle, LogOut, Check, X
@@ -87,12 +88,109 @@ export default function App() {
     setTimeout(() => setToastError(prev => prev === msg ? null : prev), 4000);
   };
 
+  // Self-Updater and Notification logic states
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string; notes: string } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const isNewerVersion = (local: string, remote: string) => {
+    const localParts = local.split('.').map(Number);
+    const remoteParts = remote.split('.').map(Number);
+    for (let i = 0; i < Math.max(localParts.length, remoteParts.length); i++) {
+      const l = localParts[i] || 0;
+      const r = remoteParts[i] || 0;
+      if (r > l) return true;
+      if (l > r) return false;
+    }
+    return false;
+  };
+
+  const checkForUpdates = async () => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    try {
+      const { Updater } = (Capacitor as any).Plugins;
+      if (!Updater) return;
+
+      const appVerResult = await Updater.getAppVersion();
+      const currentVersion = appVerResult.version;
+
+      const response = await fetch('https://api.github.com/repos/yashasvi9199/Admission-Sync/releases/latest');
+      if (!response.ok) return;
+      const release = await response.json();
+      
+      const latestTag = release.tag_name;
+      const latestVersion = latestTag.replace(/^v/, '');
+
+      if (isNewerVersion(currentVersion, latestVersion)) {
+        const apkAsset = release.assets.find((asset: any) => asset.name.endsWith('.apk'));
+        if (apkAsset) {
+          setUpdateInfo({
+            version: latestVersion,
+            url: apkAsset.browser_download_url,
+            notes: release.body || ''
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Error checking for updates", e);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!updateInfo) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      const { Updater } = (Capacitor as any).Plugins;
+      await Updater.installApk({ url: updateInfo.url });
+      showSuccessToast("Update downloaded! Launching installer...");
+    } catch (e: any) {
+      console.error(e);
+      setUpdateError(e.message || "Failed to download update APK.");
+      showErrorToast("Update installation failed.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const setupShiftNotifications = async () => {
+    if (Capacitor.getPlatform() !== 'android' || !activeUser) return;
+    try {
+      const { AppNotification } = (Capacitor as any).Plugins;
+      if (!AppNotification) return;
+
+      const permResult = await AppNotification.requestPermission();
+      if (!permResult.granted) {
+        console.warn("Notification permissions not granted.");
+        return;
+      }
+
+      const userShift = shifts.find(s => s.id === activeUser.shiftId) || shifts[0];
+      if (userShift) {
+        await AppNotification.scheduleShiftNotifications({
+          shiftStart: userShift.startTime,
+          shiftEnd: userShift.endTime
+        });
+        console.log("Successfully scheduled shift notification alarms.");
+      }
+    } catch (e) {
+      console.error("Error setting up shift alarms", e);
+    }
+  };
+
   useEffect(() => {
     refreshStates();
+    checkForUpdates();
     const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
     const midPunchTimer = setInterval(() => checkMidnightAutoPunchOut(), 60000);
     return () => { clearInterval(clockTimer); clearInterval(midPunchTimer); };
   }, []);
+
+  useEffect(() => {
+    if (activeUser) {
+      setupShiftNotifications();
+    }
+  }, [activeUser, shifts]);
 
   const currentStatus = (() => {
     if (!activeUser) return 'out';
@@ -327,6 +425,62 @@ export default function App() {
           </nav>
         )}
       </div>
+
+      {/* Self-Update Prompter Modal */}
+      {updateInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm p-5 rounded-3xl border border-indigo-500/20 bg-[#0B0F19] text-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-indigo-400">
+              <Clock className="w-5 h-5 animate-pulse" />
+              <span className="text-xs font-black uppercase tracking-wider">Software Update Available</span>
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-base font-black text-white">Version v{updateInfo.version}</h3>
+              <p className="text-[10px] text-slate-400 font-bold leading-normal">
+                A new version of AeroPunchin is ready for download.
+              </p>
+            </div>
+
+            {updateInfo.notes && (
+              <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 text-[10px] max-h-32 overflow-y-auto space-y-1 font-medium leading-relaxed">
+                <span className="text-[9px] font-black uppercase text-slate-500 block">Release Notes:</span>
+                <p className="whitespace-pre-line text-slate-300">{updateInfo.notes}</p>
+              </div>
+            )}
+
+            {updateError && (
+              <p className="text-[10px] text-rose-500 font-bold bg-rose-500/10 p-2 rounded-xl border border-rose-500/20">
+                {updateError}
+              </p>
+            )}
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                onClick={() => setUpdateInfo(null)}
+                disabled={isUpdating}
+                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-[10px] font-black uppercase transition-all cursor-pointer disabled:opacity-50 text-center"
+              >
+                Later
+              </button>
+              <button
+                onClick={handleInstallUpdate}
+                disabled={isUpdating}
+                className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase transition-all cursor-pointer disabled:opacity-50 text-center flex items-center justify-center gap-1.5"
+              >
+                {isUpdating ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Installing...
+                  </>
+                ) : (
+                  'Update Now'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

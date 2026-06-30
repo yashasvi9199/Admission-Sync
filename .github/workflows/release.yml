@@ -49,10 +49,11 @@ jobs:
           TAG=$(cat .github/outputs/tag.txt)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          cat .github/outputs/release_notes.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          EOF=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64 | tr -dc 'a-zA-Z0-9')
+          echo "notes<<$EOF" >> "$GITHUB_OUTPUT"
+          cat .github/outputs/release_notes.md >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "$EOF" >> "$GITHUB_OUTPUT"
 
       - name: Check if Tag Exists
         id: check_tag

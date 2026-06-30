@@ -1,0 +1,83 @@
+name: Automated GitHub Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run Release Helper
+        run: |
+          python .github/scripts/release-helper.py
+
+      - name: Commit and push RELEASE.md updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/RELEASE.md
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(release): update release ledger [skip ci]"
+            git push origin main
+          else
+            echo "No changes to docs/RELEASE.md"
+          fi
+
+      - name: Read Release Info
+        id: release_info
+        run: |
+          VERSION=$(cat .github/outputs/version.txt)
+          TAG=$(cat .github/outputs/tag.txt)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          cat .github/outputs/release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Check if Tag Exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.release_info.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and Push Git Tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a "${{ steps.release_info.outputs.tag }}" -m "Release version ${{ steps.release_info.outputs.version }}"
+          git push origin "${{ steps.release_info.outputs.tag }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          name: AeroPunchin ${{ steps.release_info.outputs.tag }}
+          body: ${{ steps.release_info.outputs.notes }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

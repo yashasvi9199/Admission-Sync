@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def localProperties = new Properties()
+def localPropertiesFile = project.rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { instr ->
+        localProperties.load(instr)
+    }
+}
+
 android {
     namespace = "com.office.attendance"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +24,30 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            def keystoreFile = localProperties.getProperty('release.keystore') ?: "aeropunchin-release.keystore"
+            def keystorePassword = localProperties.getProperty('release.keystore.password') ?: System.getenv("KEYSTORE_PASSWORD")
+            def keyAlias = localProperties.getProperty('release.key.alias') ?: "aeropunchin"
+            def keyPassword = localProperties.getProperty('release.key.password') ?: System.getenv("KEY_PASSWORD")
+
+            if (keystorePassword && keyPassword) {
+                storeFile file(keystoreFile)
+                storePassword keystorePassword
+                keyAlias keyAlias
+                keyPassword keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

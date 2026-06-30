@@ -1,18 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { User, AttendanceRecord } from '@/src/types';
 
 interface HoursTabProps {
   activeUser: User;
+  users?: User[];
   records: AttendanceRecord[];
   lampOn: boolean;
 }
 
-export default function HoursTab({ activeUser, records, lampOn }: HoursTabProps) {
-  // Compile calculations for Hours Tab (Overtime)
-  const getUserWorkSummary = () => {
-    if (!activeUser) return { regularMs: 0, overtimeMs: 0, sessions: [] };
+export default function HoursTab({ activeUser, users = [], records, lampOn }: HoursTabProps) {
+  // Filter state: default to admin's own ID
+  const [selectedUserFilter, setSelectedUserFilter] = useState(activeUser.id);
 
-    const userPunches = records.filter(r => r.userId === activeUser.id);
+  // Format users with admin first
+  const sortedUsers = [
+    activeUser,
+    ...users.filter(u => u.id !== activeUser.id)
+  ];
+
+  const targetUserId = activeUser.role === 'Admin' ? selectedUserFilter : activeUser.id;
+
+  // Compile calculations for Hours Tab (Overtime)
+  const getUserWorkSummary = (userId: string) => {
+    if (!userId) return { regularMs: 0, overtimeMs: 0, sessions: [] };
+
+    const userPunches = records.filter(r => r.userId === userId);
     const sorted = [...userPunches].sort((a, b) => a.timestamp - b.timestamp);
     const sessions: { date: string; duration: number; regular: number; overtime: number }[] = [];
 
@@ -62,10 +74,40 @@ export default function HoursTab({ activeUser, records, lampOn }: HoursTabProps)
     };
   };
 
-  const workSummary = getUserWorkSummary();
+  const workSummary = getUserWorkSummary(targetUserId);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 space-y-4">
+      {/* Admin Horizontal User Avatars Selector */}
+      {activeUser.role === 'Admin' && (
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+          {sortedUsers.map((u) => {
+            const isSelected = selectedUserFilter === u.id;
+            const initials = `${u.firstName[0] || ''}${u.lastName[0] || ''}`.toUpperCase();
+            return (
+              <button
+                key={u.id}
+                onClick={() => {
+                  setSelectedUserFilter(u.id);
+                }}
+                className="flex flex-col items-center gap-1 shrink-0 cursor-pointer focus:outline-none"
+              >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+                  isSelected 
+                    ? 'bg-indigo-600 text-white ring-2 ring-indigo-500 ring-offset-2 ring-offset-[#0B0F19]' 
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}>
+                  {initials}
+                </div>
+                <span className={`text-[9px] font-bold truncate max-w-[55px] ${isSelected ? 'text-indigo-400 font-black' : 'text-slate-500'}`}>
+                  @{u.username}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div>
         <h4 className={`text-xs font-black uppercase tracking-wider ${lampOn ? 'text-slate-700' : 'text-slate-200'}`}>
           Shift Performance & Overtime

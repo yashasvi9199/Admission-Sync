@@ -1,7 +1,7 @@
 # Changelog - AeroPunchin
 
 All notable changes to the **AeroPunchin** project will be documented in this file.
-
+ 
 ## [1.3.0] - 2026-06-30
 
 ### Added

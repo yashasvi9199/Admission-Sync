@@ -43,3 +43,4 @@ ios/App/App.xcworkspace/xcuserdata/
 # Editor
 .vscode/
 .idea/
+android/app/aeropunchin-release.keystore

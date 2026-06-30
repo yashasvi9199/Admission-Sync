@@ -2,12 +2,14 @@
 
 All notable changes to the **AeroPunchin** project will be documented in this file.
 
-## [1.3.0] - 2026-06-30
+## [1.3.1] - 2026-06-30
 
 ### Added
 - **GitHub Release Automation**: Created `.github/workflows/release.yml` and parser script `.github/scripts/release-helper.py` to auto-publish GitHub Releases, push git tags, and update the release ledger when the changelog is updated.
 - **Signed APK Release**: Configured Android Gradle build parameters to support secure release signing loaded from gitignored local environment properties.
 - **Admin User Filter in Hours**: Integrated employee profile selector bar at the top of the Hours tab for administrators to view and check shift history logs of any user.
+- **Self-Update Prompting**: Created native `UpdaterPlugin` that automatically prompts the user to download and install new APK updates from GitHub releases directly within the app when a new release is published.
+- **Native Shift Reminders**: Integrated native `AppNotificationPlugin` and `AlarmReceiver` broadcast alarms that schedule high-priority daily push notifications reminder alerts for shift punch-in and punch-out.
 
 ## [1.2.0] - 2026-06-29
 

@@ -23,6 +23,8 @@ Project feature index. For setup and usage instructions, see [GUIDE.md](./GUIDE.
   - Side-by-side confirm password field validation with visual mismatch indicators (red cross `×`).
 - **Hours Tab User Filter**:
   - Administrators can select employee profile avatars to inspect regular/overtime summaries and shift histories for any user.
+- **Self-Updating Client**:
+  - Compares the installed version against latest GitHub releases, downloads the updated APK, and prompts the user to install it.
 
 ## Managers & Admin Features
 
@@ -58,3 +60,5 @@ Project feature index. For setup and usage instructions, see [GUIDE.md](./GUIDE.
   - Sends notifications 15 minutes before the employee's scheduled shift start.
 - **Floating Sticky Toasts**:
   - Visual floating success/error alerts overlayed at the top of the container during punches and updates.
+- **Native Device Shift Alerts**:
+  - Alarms that schedule daily high-priority push notifications to remind users to punch in at shift start and punch out at shift end.

@@ -21,6 +21,8 @@ Project feature index. For setup and usage instructions, see [GUIDE.md](./GUIDE.
   - User registration and sign-in requires strong password credentials.
   - Live check-list on the registration form checks criteria (4+ letters, 1+ number, 1+ special character) and strikes through met rules.
   - Side-by-side confirm password field validation with visual mismatch indicators (red cross `×`).
+- **Hours Tab User Filter**:
+  - Administrators can select employee profile avatars to inspect regular/overtime summaries and shift histories for any user.
 
 ## Managers & Admin Features
 
@@ -41,6 +43,10 @@ Project feature index. For setup and usage instructions, see [GUIDE.md](./GUIDE.
   - Admins can manually reset passwords for themselves or any other workforce profile.
 - **Workforce Logs Avatars Filter**:
   - Row of round employee avatar icons at the top of logs allowing administrators to filter check-in history.
+- **Signed Release Packaging**:
+  - Fully configured Gradle signing configurations for creating production-ready Android APK packages.
+- **GitHub Release CI/CD**:
+  - Automated release cycle pipelines that push git tags, compile changelogs, and maintain the release ledger.
 
 ## Automated Logic & Alerts
 

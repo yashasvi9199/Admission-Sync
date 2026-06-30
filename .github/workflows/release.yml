@@ -21,6 +21,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -55,6 +70,40 @@ jobs:
           echo "" >> "$GITHUB_OUTPUT"
           echo "$EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build Android APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Package Release APK
+        run: |
+          APK_PATH=""
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            APK_PATH="android/app/build/outputs/apk/release/app-release.apk"
+          elif [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            APK_PATH="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          else
+            APK_PATH=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          fi
+          
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: No APK file generated!"
+            exit 1
+          fi
+          
+          VERSION="${{ steps.release_info.outputs.version }}"
+          cp "$APK_PATH" "Aero Punchin $VERSION.apk"
+
       - name: Check if Tag Exists
         id: check_tag
         run: |
@@ -78,6 +127,8 @@ jobs:
           tag_name: ${{ steps.release_info.outputs.tag }}
           name: AeroPunchin ${{ steps.release_info.outputs.tag }}
           body: ${{ steps.release_info.outputs.notes }}
+          files: |
+            Aero Punchin ${{ steps.release_info.outputs.version }}.apk
           draft: false
           prerelease: false
         env:

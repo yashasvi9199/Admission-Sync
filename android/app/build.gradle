@@ -27,16 +27,16 @@ android {
 
     signingConfigs {
         release {
-            def keystoreFile = localProperties.getProperty('release.keystore') ?: "aeropunchin-release.keystore"
-            def keystorePassword = localProperties.getProperty('release.keystore.password') ?: System.getenv("KEYSTORE_PASSWORD")
-            def keyAlias = localProperties.getProperty('release.key.alias') ?: "aeropunchin"
-            def keyPassword = localProperties.getProperty('release.key.password') ?: System.getenv("KEY_PASSWORD")
+            def keystoreFileVal = localProperties.getProperty('release.keystore') ?: "aeropunchin-release.keystore"
+            def keystorePasswordVal = localProperties.getProperty('release.keystore.password') ?: System.getenv("KEYSTORE_PASSWORD")
+            def keyAliasVal = localProperties.getProperty('release.key.alias') ?: "aeropunchin"
+            def keyPasswordVal = localProperties.getProperty('release.key.password') ?: System.getenv("KEY_PASSWORD")
 
-            if (keystorePassword && keyPassword) {
-                storeFile file(keystoreFile)
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+            if (keystorePasswordVal && keyPasswordVal) {
+                storeFile file(keystoreFileVal)
+                storePassword keystorePasswordVal
+                keyAlias keyAliasVal
+                keyPassword keyPasswordVal
             }
         }
     }

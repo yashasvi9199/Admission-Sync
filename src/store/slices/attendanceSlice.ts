@@ -196,6 +196,19 @@ export const createAttendanceSlice: StateCreator<
 
           updatedAttendance.unshift(autoOut);
           changes = true;
+
+          get().executeSql('INSERT OR REPLACE INTO attendance_records (id, user_id, type, timestamp, latitude, longitude, address, distance_from_office, is_remote, accuracy, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1);', [
+            autoOut.id,
+            autoOut.userId,
+            autoOut.type,
+            autoOut.timestamp,
+            autoOut.latitude,
+            autoOut.longitude,
+            autoOut.address,
+            autoOut.distanceFromOffice || 0,
+            autoOut.isRemote,
+            autoOut.accuracy || 0
+          ]);
         }
       }
     });

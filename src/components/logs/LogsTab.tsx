@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
-import { Sliders, MapPin, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Sliders, MapPin, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, Calendar } from 'lucide-react';
 import { User, AttendanceRecord, OfficeSettings } from '@/src/types';
 import { fetchExactLocation, fetchDetailedAddress } from '../../utils/geolocation';
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
 
 interface LogsTabProps {
   activeUser: User;
@@ -33,10 +38,29 @@ export default function LogsTab({
   // Location capture status
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
+  // Timezone-safe helper to format Date as YYYY-MM-DD
+  const getYYYYMMDD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Calendar view states
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [currentMonthYear, setCurrentMonthYear] = useState(() => {
+    const d = new Date();
+    return { month: d.getMonth(), year: d.getFullYear() };
+  });
+
   // Form states
   const [newLogUserId, setNewLogUserId] = useState('');
   const [newLogType, setNewLogType] = useState<'in' | 'out'>('in');
-  const [newLogDate, setNewLogDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newLogDate, setNewLogDate] = useState(() => getYYYYMMDD(selectedDate));
   const [newLogHour, setNewLogHour] = useState('09');
   const [newLogMin, setNewLogMin] = useState('00');
   const [newLogPeriod, setNewLogPeriod] = useState('AM');
@@ -50,16 +74,97 @@ export default function LogsTab({
   const [editLogPeriod, setEditLogPeriod] = useState('AM');
   const [editLogAddress, setEditLogAddress] = useState('');
 
+  // Keep newLogDate in sync with the selected calendar date
+  useEffect(() => {
+    setNewLogDate(getYYYYMMDD(selectedDate));
+  }, [selectedDate]);
+
   // Format users with admin first
   const sortedUsers = [
     activeUser,
     ...users.filter(u => u.id !== activeUser.id)
   ];
 
-  // Filter records based on role
-  const displayedRecords = activeUser.role === 'Admin'
+  // Filter records by selected user
+  const userPunches = activeUser.role === 'Admin'
     ? records.filter(r => r.userId === selectedUserFilter)
     : records.filter(r => r.userId === activeUser.id);
+
+  // Set of dates with logs to display dot indicator
+  const datesWithLogs = useMemo(() => {
+    const set = new Set<string>();
+    userPunches.forEach(r => {
+      const d = new Date(r.timestamp);
+      set.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    });
+    return set;
+  }, [userPunches]);
+
+  // Calendar helper to generate 42-grid days
+  const calendarDays = useMemo(() => {
+    const { month, year } = currentMonthYear;
+    const date = new Date(year, month, 1);
+    const days = [];
+    const firstDayIndex = date.getDay();
+    
+    const prevMonthLastDate = new Date(year, month, 0).getDate();
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      days.push({
+        day: prevMonthLastDate - i,
+        month: month === 0 ? 11 : month - 1,
+        year: month === 0 ? year - 1 : year,
+        isCurrentMonth: false
+      });
+    }
+    
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    for (let i = 1; i <= totalDays; i++) {
+      days.push({
+        day: i,
+        month,
+        year,
+        isCurrentMonth: true
+      });
+    }
+    
+    const remainingDays = 42 - days.length;
+    for (let i = 1; i <= remainingDays; i++) {
+      days.push({
+        day: i,
+        month: month === 11 ? 0 : month + 1,
+        year: month === 11 ? year + 1 : year,
+        isCurrentMonth: false
+      });
+    }
+    
+    return days;
+  }, [currentMonthYear]);
+
+  const handlePrevMonth = () => {
+    setCurrentMonthYear(prev => {
+      if (prev.month === 0) {
+        return { month: 11, year: prev.year - 1 };
+      }
+      return { month: prev.month - 1, year: prev.year };
+    });
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonthYear(prev => {
+      if (prev.month === 11) {
+        return { month: 0, year: prev.year + 1 };
+      }
+      return { month: prev.month + 1, year: prev.year };
+    });
+  };
+
+  // Filter displayed records based on role and selected date
+  const displayedRecords = userPunches.filter(r => {
+    const rDate = new Date(r.timestamp);
+    return rDate.getDate() === selectedDate.getDate() &&
+           rDate.getMonth() === selectedDate.getMonth() &&
+           rDate.getFullYear() === selectedDate.getFullYear();
+  });
 
   // Time conversion helpers
   const get24HTimeStr = (hour: string, min: string, period: string) => {
@@ -150,6 +255,90 @@ export default function LogsTab({
           })}
         </div>
       )}
+
+      {/* Monthly Calendar View */}
+      <div className={`p-4 rounded-3xl border transition-all duration-300 ${
+        lampOn 
+          ? 'bg-slate-50 border-slate-200 text-slate-800 shadow-slate-250/30' 
+          : 'bg-slate-900/60 border-slate-850 text-slate-200 shadow-black/40'
+      }`}>
+        <div className="flex justify-between items-center mb-3">
+          <button 
+            type="button" 
+            onClick={handlePrevMonth}
+            className={`p-1.5 rounded-lg border hover:bg-slate-800 transition-colors flex items-center justify-center cursor-pointer ${
+              lampOn ? 'border-slate-300 text-slate-600 hover:bg-slate-200' : 'border-slate-800 text-slate-400'
+            }`}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-1.5">
+            <Calendar className="w-4 h-4 text-indigo-500" />
+            <span className="text-xs font-black uppercase tracking-wider">
+              {MONTH_NAMES[currentMonthYear.month]} {currentMonthYear.year}
+            </span>
+          </div>
+          <button 
+            type="button" 
+            onClick={handleNextMonth}
+            className={`p-1.5 rounded-lg border hover:bg-slate-800 transition-colors flex items-center justify-center cursor-pointer ${
+              lampOn ? 'border-slate-300 text-slate-600 hover:bg-slate-200' : 'border-slate-800 text-slate-400'
+            }`}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        
+        {/* Days of Week Headers */}
+        <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-black uppercase text-slate-500 mb-1">
+          <span>Sun</span>
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+        </div>
+        
+        {/* Days Grid */}
+        <div className="grid grid-cols-7 gap-1">
+          {calendarDays.map((d, idx) => {
+            const isSel = selectedDate.getDate() === d.day && 
+                          selectedDate.getMonth() === d.month && 
+                          selectedDate.getFullYear() === d.year;
+            
+            const todayObj = new Date();
+            const isToday = todayObj.getDate() === d.day && 
+                            todayObj.getMonth() === d.month && 
+                            todayObj.getFullYear() === d.year;
+            
+            const hasLog = datesWithLogs.has(`${d.year}-${d.month}-${d.day}`);
+            
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  const newSel = new Date(d.year, d.month, d.day);
+                  setSelectedDate(newSel);
+                }}
+                className={`h-9 flex flex-col items-center justify-center rounded-xl text-[10px] font-bold transition-all relative cursor-pointer ${
+                  isSel 
+                    ? 'bg-indigo-600 text-white shadow-md' 
+                    : d.isCurrentMonth
+                      ? lampOn ? 'text-slate-800 hover:bg-slate-150' : 'text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-500 hover:opacity-80'
+                } ${isToday && !isSel ? 'border border-indigo-500/50' : ''}`}
+              >
+                <span>{d.day}</span>
+                {hasLog && (
+                  <span className={`w-1 h-1 rounded-full absolute bottom-1.5 ${isSel ? 'bg-white' : 'bg-indigo-500'}`}></span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="flex justify-between items-center px-0.5">
         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -406,7 +595,7 @@ export default function LogsTab({
 
                             setEditingRecord(rec);
                             setEditLogType(rec.type);
-                            setEditLogDate(recDate.toISOString().split('T')[0]);
+                            setEditLogDate(getYYYYMMDD(recDate));
                             setEditLogHour(hrStr);
                             setEditLogMin(min);
                             setEditLogPeriod(period);

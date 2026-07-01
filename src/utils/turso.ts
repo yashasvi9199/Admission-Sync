@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 // Secure client for Turso / libSQL proxying via Cloudflare Pages functions
 export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
   const dbUrl = (import.meta as any).env?.VITE_TURSO_DATABASE_URL || '';
@@ -9,12 +11,7 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
   };
 
   // Determine if running inside native Capacitor environment (not served from cloudflare pages)
-  const isNativeCapacitor = typeof window !== 'undefined' && 
-    (window.location.protocol.startsWith('capacitor') || 
-     window.location.protocol.startsWith('http') && 
-     window.location.hostname !== 'localhost' && 
-     window.location.hostname !== '127.0.0.1' && 
-     !window.location.hostname.endsWith('pages.dev'));
+  const isNativeCapacitor = Capacitor.isNativePlatform();
 
   if (isNativeCapacitor && dbUrl && token && dbUrl !== 'your_turso_db_url_here') {
     const httpUrl = dbUrl.replace(/^libsql:\/\//, 'https://');

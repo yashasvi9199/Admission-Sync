@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { User, AttendanceRecord } from '@/src/types';
+import { User, AttendanceRecord, Shift } from '@/src/types';
 
 interface HoursTabProps {
   activeUser: User;
   users?: User[];
   records: AttendanceRecord[];
+  shifts: Shift[];
   lampOn: boolean;
 }
 
-export default function HoursTab({ activeUser, users = [], records, lampOn }: HoursTabProps) {
+export default function HoursTab({ activeUser, users = [], records, shifts, lampOn }: HoursTabProps) {
   // Filter state: default to admin's own ID
   const [selectedUserFilter, setSelectedUserFilter] = useState(activeUser.id);
 
@@ -20,9 +21,28 @@ export default function HoursTab({ activeUser, users = [], records, lampOn }: Ho
 
   const targetUserId = activeUser.role === 'Admin' ? selectedUserFilter : activeUser.id;
 
+  const calculateShiftHours = (startTime: string, endTime: string): number => {
+    const [startHrs, startMins] = startTime.split(':').map(Number);
+    const [endHrs, endMins] = endTime.split(':').map(Number);
+    
+    let startMinutes = startHrs * 60 + startMins;
+    let endMinutes = endHrs * 60 + endMins;
+    
+    if (endMinutes < startMinutes) {
+      // Crosses midnight
+      endMinutes += 24 * 60;
+    }
+    
+    return (endMinutes - startMinutes) / 60;
+  };
+
   // Compile calculations for Hours Tab (Overtime)
   const getUserWorkSummary = (userId: string) => {
     if (!userId) return { regularMs: 0, overtimeMs: 0, sessions: [] };
+
+    const targetUser = users.find(u => u.id === userId) || activeUser;
+    const userShift = shifts.find(s => s.id === targetUser.shiftId);
+    const shiftHours = userShift ? calculateShiftHours(userShift.startTime, userShift.endTime) : 8;
 
     const userPunches = records.filter(r => r.userId === userId);
     const sorted = [...userPunches].sort((a, b) => a.timestamp - b.timestamp);
@@ -37,8 +57,8 @@ export default function HoursTab({ activeUser, users = [], records, lampOn }: Ho
         const durationMs = p.timestamp - currentIn.timestamp;
         const durationHrs = durationMs / 3600000;
         
-        const regularHrs = Math.min(durationHrs, 8);
-        const overtimeHrs = Math.max(0, durationHrs - 8);
+        const regularHrs = Math.min(durationHrs, shiftHours);
+        const overtimeHrs = Math.max(0, durationHrs - shiftHours);
 
         sessions.push({
           date: new Date(currentIn.timestamp).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
@@ -54,8 +74,8 @@ export default function HoursTab({ activeUser, users = [], records, lampOn }: Ho
     if (currentIn) {
       const runningMs = Date.now() - currentIn.timestamp;
       const runningHrs = runningMs / 3600000;
-      const regularHrs = Math.min(runningHrs, 8);
-      const overtimeHrs = Math.max(0, runningHrs - 8);
+      const regularHrs = Math.min(runningHrs, shiftHours);
+      const overtimeHrs = Math.max(0, runningHrs - shiftHours);
       sessions.push({
         date: new Date(currentIn.timestamp).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
         duration: runningMs,

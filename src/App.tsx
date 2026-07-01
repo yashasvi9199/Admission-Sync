@@ -377,7 +377,7 @@ export default function App() {
                 <LogsTab activeUser={activeUser} users={users} records={records} officeSettings={officeSettings} onAdminCreateLog={adminCreateLog} onEditRecord={editRecord} onDeleteRecords={deleteRecords} lampOn={currentStatus === 'in'} />
               )}
               {activeTab === 'hours' && (
-                <HoursTab activeUser={activeUser} users={users} records={records} lampOn={currentStatus === 'in'} />
+                <HoursTab activeUser={activeUser} users={users} records={records} shifts={shifts} lampOn={currentStatus === 'in'} />
               )}
               {activeTab === 'leaves' && (
                 <LeavesTab activeUser={activeUser} leaves={leaves} onRequestLeave={requestLeave} isOnline={true} lampOn={currentStatus === 'in'} />

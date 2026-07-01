@@ -43,7 +43,10 @@ Project feature index. For setup and usage instructions, see [GUIDE.md](./GUIDE.
   - Admins can manually edit and select timestamps in the Logs feed to resolve user timing errors.
 - **Roster Password Reset**:
   - Admins can manually reset passwords for themselves or any other workforce profile.
-- **Workforce Logs Avatars Filter**:
+- **Workforce Logs Calendar & Avatars Filter**:
+  - Replaced flat check-in history feed with a monthly date-grid calendar selector.
+  - Highlights days in the calendar with active logs utilizing colored dots.
+  - Filtering logs, editing logs, creating manual entries, and bulk deleting records is scoped automatically to the selected date.
   - Row of round employee avatar icons at the top of logs allowing administrators to filter check-in history.
 - **Signed Release Packaging**:
   - Fully configured Gradle signing configurations for creating production-ready Android APK packages.

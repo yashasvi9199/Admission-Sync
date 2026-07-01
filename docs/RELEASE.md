@@ -24,3 +24,16 @@
 - **Signed APK Release**: Configured Android Gradle build parameters to support secure release signing loaded from gitignored local environment properties.
 - **Admin User Filter in Hours**: Integrated employee profile selector bar at the top of the Hours tab for administrators to view and check shift history logs of any user.
 
+## [v1.3.1] - 2026-06-30
+- **Title**: AeroPunchin v1.3.1
+- **Self-Update Prompting**: Created native `UpdaterPlugin` that automatically prompts the user to download and install new APK updates from GitHub releases directly within the app when a new release is published.
+- **Native Shift Reminders**: Integrated native `AppNotificationPlugin` and `AlarmReceiver` broadcast alarms that schedule high-priority daily push notifications reminder alerts for shift punch-in and punch-out.
+
+## [v1.4.0] - 2026-07-01
+- **Title**: AeroPunchin v1.4.0
+- **Capacitor Native Login**: Corrected environment detection by using `Capacitor.isNativePlatform()` to allow logins on native mobile app builds.
+- **Midnight Auto-Punchout Database Sync**: Added database execution queries (`executeSql`) for auto-punchout records to prevent local logs from being overwritten during server synchronizations.
+- **Dynamic Shift Hours calculation**: Passed timing presets from store to calculate daily regular/overtime durations dynamically in HoursTab based on user's assigned shift hours rather than a fixed 8 hours.
+- **Calendar Logs View**: Replaced flat check-in history feed with a monthly date-grid calendar selector interface supporting date-specific CRUD and multi-record deletions.
+
+

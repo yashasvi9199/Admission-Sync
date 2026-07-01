@@ -1,6 +1,17 @@
 # Changelog - AeroPunchin
 
 All notable changes to the **AeroPunchin** project will be documented in this file.
+
+## [1.4.0] - 2026-07-01
+
+### Fixed
+- **Capacitor Native Login**: Corrected environment detection by using `Capacitor.isNativePlatform()` to allow logins on native mobile app builds.
+- **Midnight Auto-Punchout Database Sync**: Added database execution queries (`executeSql`) for auto-punchout records to prevent local logs from being overwritten during server synchronizations.
+- **Dynamic Shift Hours calculation**: Passed timing presets from store to calculate daily regular/overtime durations dynamically in HoursTab based on user's assigned shift hours rather than a fixed 8 hours.
+
+### Changed
+- **Calendar Logs View**: Replaced flat check-in history feed with a monthly date-grid calendar selector interface supporting date-specific CRUD and multi-record deletions.
+
 ## [1.3.1] - 2026-06-30
 
 ### Added

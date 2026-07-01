@@ -106,33 +106,51 @@ export default function App() {
   };
 
   const checkForUpdates = async () => {
-    if (Capacitor.getPlatform() !== 'android') return;
+    if (Capacitor.getPlatform() !== 'android') {
+      console.log("Not on Android, skipping update check.");
+      return;
+    }
     try {
+      console.log("Checking for updates...");
       const { Updater } = (Capacitor as any).Plugins;
-      if (!Updater) return;
+      if (!Updater) {
+        console.warn("Updater plugin not found on Capacitor.Plugins");
+        return;
+      }
 
       const appVerResult = await Updater.getAppVersion();
       const currentVersion = appVerResult.version;
+      console.log("Local App Version:", currentVersion);
 
-      const response = await fetch('https://api.github.com/repos/yashasvi9199/Admission-Sync/releases/latest');
-      if (!response.ok) return;
+      const response = await fetch(`https://api.github.com/repos/yashasvi9199/Admission-Sync/releases/latest?t=${Date.now()}`);
+      if (!response.ok) {
+        console.warn("GitHub API error: status", response.status, response.statusText);
+        return;
+      }
       const release = await response.json();
       
       const latestTag = release.tag_name;
       const latestVersion = latestTag.replace(/^v/, '');
+      console.log("Latest Remote Version:", latestVersion);
 
       if (isNewerVersion(currentVersion, latestVersion)) {
+        console.log("New version detected! Remote version is newer than local.");
         const apkAsset = release.assets.find((asset: any) => asset.name.endsWith('.apk'));
         if (apkAsset) {
+          console.log("Found APK asset:", apkAsset.browser_download_url);
           setUpdateInfo({
             version: latestVersion,
             url: apkAsset.browser_download_url,
             notes: release.body || ''
           });
+        } else {
+          console.warn("No APK asset found in the latest release.");
         }
+      } else {
+        console.log("App is up-to-date.");
       }
     } catch (e) {
-      console.error("Error checking for updates", e);
+      console.error("Error checking for updates:", e);
     }
   };
 

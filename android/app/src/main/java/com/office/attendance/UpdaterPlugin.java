@@ -40,12 +40,49 @@ public class UpdaterPlugin extends Plugin {
             return;
         }
 
+        // Check Unknown App Sources permission for Android O (API 26) and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!getContext().getPackageManager().canRequestPackageInstalls()) {
+                try {
+                    Intent settingsIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .setData(Uri.parse("package:" + getContext().getPackageName()));
+                    settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(settingsIntent);
+                    call.reject("Install permission missing. Redirected user to Settings. Please enable the permission and try again.");
+                } catch (Exception e) {
+                    Intent settingsIntent = new Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS);
+                    settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(settingsIntent);
+                    call.reject("Install permission missing. Redirected to Security Settings. Please enable 'Install unknown apps' and try again.");
+                }
+                return;
+            }
+        }
+
         new Thread(() -> {
             try {
                 URL url = new URL(apkUrl);
                 HttpURLConnection c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod("GET");
-                c.connect();
+                c.setInstanceFollowRedirects(true);
+
+                int status = c.getResponseCode();
+                int redirectCount = 0;
+                while ((status == HttpURLConnection.HTTP_MOVED_TEMP || 
+                        status == HttpURLConnection.HTTP_MOVED_PERM || 
+                        status == 307 || status == 308) && redirectCount < 3) {
+                    String newUrl = c.getHeaderField("Location");
+                    c = (HttpURLConnection) new URL(newUrl).openConnection();
+                    c.setRequestMethod("GET");
+                    c.setInstanceFollowRedirects(true);
+                    status = c.getResponseCode();
+                    redirectCount++;
+                }
+
+                if (status != HttpURLConnection.HTTP_OK) {
+                    call.reject("Server returned HTTP status " + status);
+                    return;
+                }
 
                 File path = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
                 File outputFile = new File(path, "aeropunchin-update.apk");

@@ -92,7 +92,7 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
           createdAt: Number(u.created_at || Date.now())
         }));
         localStorage.setItem('ap_users', JSON.stringify(mappedUsers));
-        const updatedActive = mappedUsers.find((u: any) => u.id === activeUserId) || null;
+        const updatedActive = mappedUsers.find((u: User) => u.id === activeUserId) || null;
         set({ users: mappedUsers, activeUser: updatedActive });
       }
 

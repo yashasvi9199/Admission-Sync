@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, Shift, AttendanceRecord } from '@/src/types';
 import { Calendar } from 'lucide-react';
 
@@ -87,6 +87,11 @@ export default function TardinessSubTab({
     };
   };
 
+  const tardyDaysSet = useMemo(() => {
+    const tardyPunches = getTardyRecordsForUser(selectedTardyUser);
+    return new Set(tardyPunches.map(p => new Date(p.timestamp).getDate()));
+  }, [selectedTardyUser, users, shifts, records]);
+
   const renderCalendarDays = () => {
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
@@ -94,15 +99,12 @@ export default function TardinessSubTab({
     const firstDayIndex = new Date(year, month, 1).getDay();
     const totalDays = new Date(year, month + 1, 0).getDate();
 
-    const tardyPunches = getTardyRecordsForUser(selectedTardyUser);
-    const tardyDays = tardyPunches.map(p => new Date(p.timestamp).getDate());
-
     const days = [];
     for (let i = 0; i < firstDayIndex; i++) {
       days.push(<div key={`pad-${i}`} className="h-7 w-7"></div>);
     }
     for (let d = 1; d <= totalDays; d++) {
-      const isLate = tardyDays.includes(d);
+      const isLate = tardyDaysSet.has(d);
       days.push(
         <button
           key={d}

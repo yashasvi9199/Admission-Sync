@@ -134,7 +134,6 @@ export default function App() {
       console.log("Latest Remote Version:", latestVersion);
 
       if (isNewerVersion(currentVersion, latestVersion)) {
-        console.log("New version detected! Remote version is newer than local.");
         const apkAsset = release.assets.find((asset: any) => asset.name.endsWith('.apk'));
         if (apkAsset) {
           console.log("Found APK asset:", apkAsset.browser_download_url);

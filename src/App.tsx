@@ -162,9 +162,10 @@ export default function App() {
       const { Updater } = (Capacitor as any).Plugins;
       await Updater.installApk({ url: updateInfo.url });
       showSuccessToast("Update downloaded! Launching installer...");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setUpdateError(e.message || "Failed to download update APK.");
+      const errorMessage = e instanceof Error ? e.message : "Failed to download update APK.";
+      setUpdateError(errorMessage);
       showErrorToast("Update installation failed.");
     } finally {
       setIsUpdating(false);
@@ -263,8 +264,9 @@ export default function App() {
       const address = await fetchDetailedAddress(location.latitude, location.longitude);
       punchShift(nextType, location.latitude, location.longitude, address, Math.round(distance), isRemote, location.accuracy, true);
       showSuccessToast(`Successfully clocked ${nextType.toUpperCase()}!`);
-    } catch (err: any) {
-      showErrorToast(err.message || 'Location verification failed.');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Location verification failed.';
+      showErrorToast(errorMessage);
     } finally {
       setIsLogging(false);
     }

@@ -131,7 +131,6 @@ export default function App() {
       
       const latestTag = release.tag_name;
       const latestVersion = latestTag.replace(/^v/, '');
-      console.log("Latest Remote Version:", latestVersion);
 
       if (isNewerVersion(currentVersion, latestVersion)) {
         console.log("New version detected! Remote version is newer than local.");

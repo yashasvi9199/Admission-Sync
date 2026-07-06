@@ -67,13 +67,13 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
 
     const responseStmt = execResult?.response?.result;
     if (responseStmt) {
-      const cols = responseStmt.cols.map((c: any) => c.name);
-      return responseStmt.rows.map((row: any) => {
-        const obj: any = {};
-        row.forEach((val: any, idx: number) => {
+      const cols = responseStmt.cols.map((c: { name: string }) => c.name);
+      return responseStmt.rows.map((row: unknown[]) => {
+        const obj: Record<string, unknown> = {};
+        row.forEach((val: unknown, idx: number) => {
           let finalVal = val;
           if (val && typeof val === 'object' && 'value' in val) {
-            finalVal = val.value;
+            finalVal = (val as { value: unknown }).value;
           }
           obj[cols[idx]] = finalVal;
         });

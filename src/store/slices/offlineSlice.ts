@@ -37,14 +37,17 @@ export const createOfflineSlice: StateCreator<
     if (queue.length === 0) return;
 
     const remaining: TursoOfflineAction[] = [];
-    for (const action of queue) {
-      try {
-        await queryTurso(action.sql, action.args);
-      } catch (err) {
-        console.warn('Failed to sync queued action, keeping in offline queue:', action, err);
+    const results = await Promise.allSettled(
+      queue.map(action => queryTurso(action.sql, action.args))
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const action = queue[index];
+        console.warn('Failed to sync queued action, keeping in offline queue:', action, result.reason);
         remaining.push(action);
       }
-    }
+    });
 
     localStorage.setItem('ap_offline_queue', JSON.stringify(remaining));
     set({ offlineQueue: remaining });

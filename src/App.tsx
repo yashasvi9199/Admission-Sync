@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Capacitor } from '@capacitor/core';
 import { 
@@ -210,12 +210,12 @@ export default function App() {
     }
   }, [activeUser, shifts]);
 
-  const currentStatus = (() => {
+  const currentStatus = useMemo(() => {
     if (!activeUser) return 'out';
     const userPunches = records.filter(r => r.userId === activeUser.id);
     if (userPunches.length === 0) return 'out';
     return [...userPunches].sort((a, b) => b.timestamp - a.timestamp)[0].type;
-  })();
+  }, [activeUser, records]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();

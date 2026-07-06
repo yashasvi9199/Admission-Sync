@@ -25,29 +25,6 @@ export const createAuthSlice: StateCreator<
   users: [],
   login: (username, password) => {
     const users = getStoredUsers();
-    
-    // Dev bypass check
-    if (username.trim().toLowerCase() === 'admin' && password === 'admin') {
-      let found = users.find(u => u.username.toLowerCase() === 'admin');
-      if (!found) {
-        const newAdmin: User = {
-          id: 'admin-bypass-id',
-          username: 'admin',
-          firstName: 'System',
-          lastName: 'Admin',
-          role: 'Admin',
-          shiftId: 'shift-morning',
-          password: 'admin',
-          createdAt: Date.now()
-        };
-        users.push(newAdmin);
-        localStorage.setItem('ap_users', JSON.stringify(users));
-        found = newAdmin;
-      }
-      localStorage.setItem('ap_active_user_id', found.id);
-      get().refreshStates();
-      return { user: found };
-    }
 
     const found = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
     if (!found) {

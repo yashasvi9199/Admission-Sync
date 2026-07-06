@@ -1,9 +1,9 @@
 import { Capacitor } from '@capacitor/core';
 
 // Secure client for Turso / libSQL proxying via Cloudflare Pages functions
-export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
-  const dbUrl = (import.meta as any).env?.VITE_TURSO_DATABASE_URL || '';
-  const token = (import.meta as any).env?.VITE_TURSO_AUTH_TOKEN || '';
+export async function queryTurso<T = Record<string, unknown>>(sql: string, args: (string | number | boolean | null | undefined)[] = []): Promise<T[] | null> {
+  const dbUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_TURSO_DATABASE_URL || '';
+  const token = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_TURSO_AUTH_TOKEN || '';
 
   let requestUrl = '/api/turso';
   const headers: Record<string, string> = {
@@ -67,17 +67,17 @@ export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
 
     const responseStmt = execResult?.response?.result;
     if (responseStmt) {
-      const cols = responseStmt.cols.map((c: any) => c.name);
-      return responseStmt.rows.map((row: any) => {
-        const obj: any = {};
-        row.forEach((val: any, idx: number) => {
+      const cols = responseStmt.cols.map((c: { name: string }) => c.name);
+      return responseStmt.rows.map((row: unknown[]) => {
+        const obj: Record<string, unknown> = {};
+        row.forEach((val: unknown, idx: number) => {
           let finalVal = val;
           if (val && typeof val === 'object' && 'value' in val) {
-            finalVal = val.value;
+            finalVal = (val as Record<string, unknown>).value;
           }
           obj[cols[idx]] = finalVal;
         });
-        return obj;
+        return obj as T;
       });
     }
     return null;

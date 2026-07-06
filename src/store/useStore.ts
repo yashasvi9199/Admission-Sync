@@ -60,16 +60,16 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
 
     try {
       const [remoteShifts, remoteUsers, remoteRecords, remoteBreaks, remoteLeaves, remoteSettings] = await Promise.all([
-        queryTurso('SELECT * FROM shifts;'),
-        queryTurso('SELECT * FROM users;'),
-        queryTurso('SELECT * FROM attendance_records;'),
-        queryTurso('SELECT * FROM breaks;'),
-        queryTurso('SELECT * FROM leave_requests;'),
-        queryTurso('SELECT * FROM office_settings;')
+        queryTurso<Record<string, any>>('SELECT * FROM shifts;'),
+        queryTurso<Record<string, any>>('SELECT * FROM users;'),
+        queryTurso<Record<string, any>>('SELECT * FROM attendance_records;'),
+        queryTurso<Record<string, any>>('SELECT * FROM breaks;'),
+        queryTurso<Record<string, any>>('SELECT * FROM leave_requests;'),
+        queryTurso<Record<string, any>>('SELECT * FROM office_settings;')
       ]);
 
       if (remoteShifts) {
-        const mappedShifts = remoteShifts.map((s: any) => ({
+        const mappedShifts = remoteShifts.map((s: Record<string, any>) => ({
           id: s.id,
           name: s.name,
           startTime: s.start_time,
@@ -77,11 +77,11 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
           gracePeriodMins: Number(s.grace_period_mins || 15)
         }));
         localStorage.setItem('ap_shifts', JSON.stringify(mappedShifts));
-        set({ shifts: mappedShifts });
+        set({ shifts: mappedShifts as Shift[] });
       }
 
       if (remoteUsers) {
-        const mappedUsers = remoteUsers.map((u: any) => ({
+        const mappedUsers = remoteUsers.map((u: Record<string, any>) => ({
           id: u.id,
           username: u.username,
           firstName: u.first_name,
@@ -92,16 +92,16 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
           createdAt: Number(u.created_at || Date.now())
         }));
         localStorage.setItem('ap_users', JSON.stringify(mappedUsers));
-        const updatedActive = mappedUsers.find((u: any) => u.id === activeUserId) || null;
-        set({ users: mappedUsers, activeUser: updatedActive });
+        const updatedActive = mappedUsers.find((u) => u.id === activeUserId) || null;
+        set({ users: mappedUsers as User[], activeUser: updatedActive as User | null });
       }
 
       if (remoteRecords) {
-        const mappedRecords = remoteRecords.map((r: any) => ({
+        const mappedRecords = remoteRecords.map((r: Record<string, any>) => ({
           id: r.id,
           userId: r.user_id,
-          name: remoteUsers?.find((u: any) => u.id === r.user_id) 
-            ? `${remoteUsers.find((u: any) => u.id === r.user_id).first_name} ${remoteUsers.find((u: any) => u.id === r.user_id).last_name}` 
+          name: remoteUsers?.find((u: Record<string, any>) => u.id === r.user_id)
+            ? `${remoteUsers.find((u: Record<string, any>) => u.id === r.user_id)?.first_name} ${remoteUsers.find((u: Record<string, any>) => u.id === r.user_id)?.last_name}`
             : 'Unknown',
           timestamp: Number(r.timestamp),
           type: r.type,
@@ -114,11 +114,11 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
           synced: Boolean(r.synced)
         }));
         localStorage.setItem('ap_attendance', JSON.stringify(mappedRecords));
-        set({ records: mappedRecords });
+        set({ records: mappedRecords as AttendanceRecord[] });
       }
 
       if (remoteBreaks) {
-        const mappedBreaks = remoteBreaks.map((b: any) => ({
+        const mappedBreaks = remoteBreaks.map((b: Record<string, any>) => ({
           id: b.id,
           userId: b.user_id,
           type: b.type,
@@ -126,15 +126,15 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
           endTime: b.end_time ? Number(b.end_time) : null
         }));
         localStorage.setItem('ap_breaks', JSON.stringify(mappedBreaks));
-        set({ breaks: mappedBreaks });
+        set({ breaks: mappedBreaks as BreakRecord[] });
       }
 
       if (remoteLeaves) {
-        const mappedLeaves = remoteLeaves.map((l: any) => ({
+        const mappedLeaves = remoteLeaves.map((l: Record<string, any>) => ({
           id: l.id,
           userId: l.user_id,
-          employeeName: remoteUsers?.find((u: any) => u.id === l.user_id) 
-            ? `${remoteUsers.find((u: any) => u.id === l.user_id).first_name} ${remoteUsers.find((u: any) => u.id === l.user_id).last_name}` 
+          employeeName: remoteUsers?.find((u: Record<string, any>) => u.id === l.user_id)
+            ? `${remoteUsers.find((u: Record<string, any>) => u.id === l.user_id)?.first_name} ${remoteUsers.find((u: Record<string, any>) => u.id === l.user_id)?.last_name}`
             : 'Unknown',
           type: l.type,
           startDate: l.start_date,
@@ -149,15 +149,15 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
       }
 
       if (remoteSettings && remoteSettings[0]) {
-        const s = remoteSettings[0];
+        const s = remoteSettings[0] as Record<string, any>;
         const mappedSettings = {
-          id: s.id,
-          name: s.name,
+          id: s.id as string,
+          name: s.name as string,
           latitude: Number(s.latitude),
           longitude: Number(s.longitude),
           geofenceRadius: Number(s.geofence_radius),
-          autoPunchOutTime: s.auto_punch_out_time || '00:00',
-          workingDays: s.working_days ? s.working_days.split(',') : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+          autoPunchOutTime: (s.auto_punch_out_time as string) || '00:00',
+          workingDays: s.working_days ? (s.working_days as string).split(',') : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
         };
         localStorage.setItem('ap_office_settings', JSON.stringify(mappedSettings));
         set({ officeSettings: mappedSettings });

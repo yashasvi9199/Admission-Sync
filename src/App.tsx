@@ -111,7 +111,6 @@ export default function App() {
       return;
     }
     try {
-      console.log("Checking for updates...");
       const { Updater } = (Capacitor as any).Plugins;
       if (!Updater) {
         console.warn("Updater plugin not found on Capacitor.Plugins");

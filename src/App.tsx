@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Capacitor } from '@capacitor/core';
 import { 
@@ -210,12 +210,17 @@ export default function App() {
     }
   }, [activeUser, shifts]);
 
-  const currentStatus = (() => {
-    if (!activeUser) return 'out';
+  const lastPunch = useMemo(() => {
+    if (!activeUser) return null;
+
     const userPunches = records.filter(r => r.userId === activeUser.id);
-    if (userPunches.length === 0) return 'out';
-    return [...userPunches].sort((a, b) => b.timestamp - a.timestamp)[0].type;
-  })();
+    if (userPunches.length === 0) return null;
+
+    return userPunches.reduce((max, r) => r.timestamp > max.timestamp ? r : max, userPunches[0]);
+  }, [activeUser, records]);
+
+  const currentStatus = lastPunch ? lastPunch.type : 'out';
+  const showMissingPunch = currentStatus === 'in' && lastPunch && (Date.now() - lastPunch.timestamp > 32400000);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -389,7 +394,7 @@ export default function App() {
           ) : (
             <>
               {activeTab === 'attendance' && (
-                <AttendanceTab lampOn={currentStatus === 'in'} onToggle={handleCheckInOut} isLogging={isLogging} showMissingPunch={currentStatus === 'in' && records.filter(r => r.userId === activeUser.id).length > 0 && (Date.now() - [...records.filter(r => r.userId === activeUser.id)].sort((a, b) => b.timestamp - a.timestamp)[0].timestamp > 32400000)} showPreShiftReminder={(() => { const sh = shifts.find(s => s.id === activeUser.shiftId) || shifts[0]; if (!sh) return false; const [shHrs, shMins] = sh.startTime.split(':').map(Number); const now = new Date(); const shiftTime = new Date(); shiftTime.setHours(shHrs, shMins, 0, 0); const diff = shiftTime.getTime() - now.getTime(); return diff > 0 && diff < 900000; })()} shiftName={shifts.find(s => s.id === activeUser.shiftId)?.name || 'Default Shift'} />
+                <AttendanceTab lampOn={currentStatus === 'in'} onToggle={handleCheckInOut} isLogging={isLogging} showMissingPunch={showMissingPunch} showPreShiftReminder={(() => { const sh = shifts.find(s => s.id === activeUser.shiftId) || shifts[0]; if (!sh) return false; const [shHrs, shMins] = sh.startTime.split(':').map(Number); const now = new Date(); const shiftTime = new Date(); shiftTime.setHours(shHrs, shMins, 0, 0); const diff = shiftTime.getTime() - now.getTime(); return diff > 0 && diff < 900000; })()} shiftName={shifts.find(s => s.id === activeUser.shiftId)?.name || 'Default Shift'} />
               )}
               {activeTab === 'logs' && (
                 <LogsTab activeUser={activeUser} users={users} records={records} officeSettings={officeSettings} onAdminCreateLog={adminCreateLog} onEditRecord={editRecord} onDeleteRecords={deleteRecords} lampOn={currentStatus === 'in'} />

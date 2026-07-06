@@ -52,13 +52,26 @@ export default function UsersSubTab({
   const passwordsMatch = newPassword === confirmPassword;
 
   // Compute live roster
-  const liveRoster = users.map(user => {
-    const userPunches = records.filter(r => r.userId === user.id);
-    const lastPunch = userPunches.length > 0
-      ? [...userPunches].sort((a, b) => b.timestamp - a.timestamp)[0]
-      : null;
+  const latestPunchByUserId = new Map<string, AttendanceRecord>();
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i];
+    const existing = latestPunchByUserId.get(r.userId);
+    if (!existing || r.timestamp > existing.timestamp) {
+      latestPunchByUserId.set(r.userId, r);
+    }
+  }
 
-    const activeBreak = breaks.find(b => b.userId === user.id && b.endTime === null);
+  const activeBreakByUserId = new Map<string, BreakRecord>();
+  for (let i = 0; i < breaks.length; i++) {
+    const b = breaks[i];
+    if (b.endTime === null) {
+      activeBreakByUserId.set(b.userId, b);
+    }
+  }
+
+  const liveRoster = users.map(user => {
+    const lastPunch = latestPunchByUserId.get(user.id) || null;
+    const activeBreak = activeBreakByUserId.get(user.id);
 
     let status: 'present' | 'break' | 'absent' = 'absent';
     if (lastPunch && lastPunch.type === 'in') {

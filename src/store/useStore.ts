@@ -8,6 +8,69 @@ import { createLeaveSlice, LeaveSlice } from './slices/leaveSlice';
 import { createSettingsSlice, SettingsSlice } from './slices/settingsSlice';
 import { createOfflineSlice, OfflineSlice } from './slices/offlineSlice';
 
+export interface RemoteShift {
+  id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  grace_period_mins?: number | string;
+}
+
+export interface RemoteUser {
+  id: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  role: 'Admin' | 'Sales' | 'Developer' | 'HR' | 'Manager' | 'User';
+  shift_id: string;
+  password?: string;
+  created_at?: number | string;
+}
+
+export interface RemoteRecord {
+  id: string;
+  user_id: string;
+  timestamp: number | string;
+  type: 'in' | 'out';
+  latitude: number | string;
+  longitude: number | string;
+  address: string;
+  distance_from_office?: number | string;
+  is_remote: number | boolean;
+  accuracy?: number | string;
+  synced: number | boolean;
+}
+
+export interface RemoteBreak {
+  id: string;
+  user_id: string;
+  type: 'lunch' | 'coffee' | 'personal';
+  start_time: number | string;
+  end_time?: number | string | null;
+}
+
+export interface RemoteLeave {
+  id: string;
+  user_id: string;
+  type: 'annual' | 'sick' | 'casual' | 'other';
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_by?: string;
+  created_at?: number | string;
+}
+
+export interface RemoteSettings {
+  id: string;
+  name: string;
+  latitude: number | string;
+  longitude: number | string;
+  geofence_radius: number | string;
+  auto_punch_out_time?: string;
+  working_days?: string;
+}
+
 export interface AeroPunchinState extends AuthSlice, AttendanceSlice, LeaveSlice, SettingsSlice, OfflineSlice {
   refreshStates: () => void;
 }
@@ -69,7 +132,7 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
       ]);
 
       if (remoteShifts) {
-        const mappedShifts = remoteShifts.map((s: any) => ({
+        const mappedShifts = remoteShifts.map((s: RemoteShift) => ({
           id: s.id,
           name: s.name,
           startTime: s.start_time,
@@ -81,7 +144,7 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
       }
 
       if (remoteUsers) {
-        const mappedUsers = remoteUsers.map((u: any) => ({
+        const mappedUsers = remoteUsers.map((u: RemoteUser) => ({
           id: u.id,
           username: u.username,
           firstName: u.first_name,
@@ -92,16 +155,16 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
           createdAt: Number(u.created_at || Date.now())
         }));
         localStorage.setItem('ap_users', JSON.stringify(mappedUsers));
-        const updatedActive = mappedUsers.find((u: any) => u.id === activeUserId) || null;
+        const updatedActive = mappedUsers.find((u: RemoteUser) => u.id === activeUserId) || null;
         set({ users: mappedUsers, activeUser: updatedActive });
       }
 
       if (remoteRecords) {
-        const mappedRecords = remoteRecords.map((r: any) => ({
+        const mappedRecords = remoteRecords.map((r: RemoteRecord) => ({
           id: r.id,
           userId: r.user_id,
-          name: remoteUsers?.find((u: any) => u.id === r.user_id) 
-            ? `${remoteUsers.find((u: any) => u.id === r.user_id).first_name} ${remoteUsers.find((u: any) => u.id === r.user_id).last_name}` 
+          name: remoteUsers?.find((u: RemoteUser) => u.id === r.user_id)
+            ? `${remoteUsers.find((u: RemoteUser) => u.id === r.user_id).first_name} ${remoteUsers.find((u: RemoteUser) => u.id === r.user_id).last_name}`
             : 'Unknown',
           timestamp: Number(r.timestamp),
           type: r.type,
@@ -118,7 +181,7 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
       }
 
       if (remoteBreaks) {
-        const mappedBreaks = remoteBreaks.map((b: any) => ({
+        const mappedBreaks = remoteBreaks.map((b: RemoteBreak) => ({
           id: b.id,
           userId: b.user_id,
           type: b.type,
@@ -130,11 +193,11 @@ export const useStore = create<AeroPunchinState>((set, get, ...a) => ({
       }
 
       if (remoteLeaves) {
-        const mappedLeaves = remoteLeaves.map((l: any) => ({
+        const mappedLeaves = remoteLeaves.map((l: RemoteLeave) => ({
           id: l.id,
           userId: l.user_id,
-          employeeName: remoteUsers?.find((u: any) => u.id === l.user_id) 
-            ? `${remoteUsers.find((u: any) => u.id === l.user_id).first_name} ${remoteUsers.find((u: any) => u.id === l.user_id).last_name}` 
+          employeeName: remoteUsers?.find((u: RemoteUser) => u.id === l.user_id)
+            ? `${remoteUsers.find((u: RemoteUser) => u.id === l.user_id).first_name} ${remoteUsers.find((u: RemoteUser) => u.id === l.user_id).last_name}`
             : 'Unknown',
           type: l.type,
           startDate: l.start_date,

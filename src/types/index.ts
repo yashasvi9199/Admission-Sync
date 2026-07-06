@@ -60,10 +60,12 @@ export interface OfflineAction {
   timestamp: number;
 }
 
+export type SqlValue = string | number | boolean | null | undefined;
+
 export interface TursoOfflineAction {
   id: string;
   sql: string;
-  args: any[];
+  args: SqlValue[];
 }
 
 export interface OfficeSettings {

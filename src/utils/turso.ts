@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core';
+import { SqlValue } from '@/src/types';
 
 // Secure client for Turso / libSQL proxying via Cloudflare Pages functions
-export async function queryTurso(sql: string, args: any[] = []): Promise<any> {
+export async function queryTurso(sql: string, args: SqlValue[] = []): Promise<any> {
   const dbUrl = (import.meta as any).env?.VITE_TURSO_DATABASE_URL || '';
   const token = (import.meta as any).env?.VITE_TURSO_AUTH_TOKEN || '';
 

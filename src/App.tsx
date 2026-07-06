@@ -120,7 +120,6 @@ export default function App() {
 
       const appVerResult = await Updater.getAppVersion();
       const currentVersion = appVerResult.version;
-      console.log("Local App Version:", currentVersion);
 
       const response = await fetch(`https://api.github.com/repos/yashasvi9199/Admission-Sync/releases/latest?t=${Date.now()}`);
       if (!response.ok) {

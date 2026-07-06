@@ -189,7 +189,6 @@ export default function App() {
           shiftStart: userShift.startTime,
           shiftEnd: userShift.endTime
         });
-        console.log("Successfully scheduled shift notification alarms.");
       }
     } catch (e) {
       console.error("Error setting up shift alarms", e);

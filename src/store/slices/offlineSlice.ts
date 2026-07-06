@@ -5,7 +5,7 @@ import { queryTurso } from '../../utils/turso';
 
 export interface OfflineSlice {
   offlineQueue: TursoOfflineAction[];
-  executeSql: (sql: string, args?: any[]) => Promise<void>;
+  executeSql: (sql: string, args?: (string | number | boolean | null | undefined)[]) => Promise<void>;
   processOfflineQueue: () => void;
 }
 

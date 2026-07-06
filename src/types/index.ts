@@ -63,7 +63,7 @@ export interface OfflineAction {
 export interface TursoOfflineAction {
   id: string;
   sql: string;
-  args: any[];
+  args: (string | number | boolean | null | undefined)[];
 }
 
 export interface OfficeSettings {

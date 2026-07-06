@@ -1,11 +1,11 @@
 import { StateCreator } from 'zustand';
 import { AeroPunchinState } from '../useStore';
-import { TursoOfflineAction } from '@/src/types';
+import { TursoOfflineAction, SqlValue } from '@/src/types';
 import { queryTurso } from '../../utils/turso';
 
 export interface OfflineSlice {
   offlineQueue: TursoOfflineAction[];
-  executeSql: (sql: string, args?: any[]) => Promise<void>;
+  executeSql: (sql: string, args?: SqlValue[]) => Promise<void>;
   processOfflineQueue: () => void;
 }
 

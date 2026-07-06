@@ -146,8 +146,6 @@ export default function App() {
         } else {
           console.warn("No APK asset found in the latest release.");
         }
-      } else {
-        console.log("App is up-to-date.");
       }
     } catch (e) {
       console.error("Error checking for updates:", e);

@@ -11,7 +11,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "apk": "npm run build && npx cap sync android && chmod +x android/gradlew && cd android && ./gradlew assembleRelease && cd .. && echo \"✅ Release APK → android/app/build/outputs/apk/release/\"",
-    "debug-apk": "npm run build && npx cap sync android && chmod +x android/gradlew && cd android && ./gradlew assembleDebug && cd .. && echo \"✅ Debug APK → android/app/build/outputs/apk/debug/\""
+    "debug-apk": "npm run build && npx cap sync android && chmod +x android/gradlew && cd android && ./gradlew assembleDebug && cd .. && echo \"✅ Debug APK → android/app/build/outputs/apk/debug/\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",
@@ -38,6 +39,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
+    "vitest": "^4.1.10",
     "wrangler": "^3.109.0"
   }
 }

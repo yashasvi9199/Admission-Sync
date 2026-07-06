@@ -107,7 +107,6 @@ export default function App() {
 
   const checkForUpdates = async () => {
     if (Capacitor.getPlatform() !== 'android') {
-      console.log("Not on Android, skipping update check.");
       return;
     }
     try {

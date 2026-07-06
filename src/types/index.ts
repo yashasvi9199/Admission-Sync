@@ -53,12 +53,10 @@ export interface LeaveRequest {
   createdAt: number;
 }
 
-export interface OfflineAction {
-  id: string;
-  type: 'punch' | 'break_start' | 'break_end' | 'leave_request';
-  payload: any;
-  timestamp: number;
-}
+export type OfflineAction =
+  | { id: string; type: 'punch'; payload: AttendanceRecord; timestamp: number }
+  | { id: string; type: 'break_start' | 'break_end'; payload: BreakRecord; timestamp: number }
+  | { id: string; type: 'leave_request'; payload: LeaveRequest; timestamp: number };
 
 export interface TursoOfflineAction {
   id: string;

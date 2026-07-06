@@ -166,9 +166,27 @@ export const createAttendanceSlice: StateCreator<
     const updatedAttendance = [...attendance];
     let changes = false;
 
+    const userOutPunches: Record<string, number[]> = {};
+    for (const rec of attendance) {
+      if (rec.type === 'out') {
+        if (!userOutPunches[rec.userId]) {
+          userOutPunches[rec.userId] = [];
+        }
+        userOutPunches[rec.userId].push(rec.timestamp);
+      }
+    }
+
     activePunches.forEach(punch => {
-      const userPunches = attendance.filter(rec => rec.userId === punch.userId && rec.timestamp > punch.timestamp);
-      const hasOut = userPunches.some(p => p.type === 'out');
+      const outTimestamps = userOutPunches[punch.userId];
+      let hasOut = false;
+      if (outTimestamps) {
+        for (let i = 0; i < outTimestamps.length; i++) {
+          if (outTimestamps[i] > punch.timestamp) {
+            hasOut = true;
+            break;
+          }
+        }
+      }
 
       if (!hasOut) {
         const punchDate = new Date(punch.timestamp);
